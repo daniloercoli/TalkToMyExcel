@@ -12,6 +12,46 @@ TalkToMyExcel keeps the application small:
 
 The server never imports Pandas or OpenPyXL to read user files. File profiling and extraction happen in the sandbox image.
 
+## Sandbox Image
+
+The running app needs a Docker image named by `SANDBOX_IMAGE`. By default,
+`.env.example` sets both `SANDBOX_IMAGE` and `PYTHON_SANDBOX_IMAGE` to:
+
+```env
+talktomyexcel-sandbox:latest
+```
+
+That single image is used for two isolated jobs:
+
+- File profiling and extraction during upload staging.
+- Generated Python analysis for advanced calculation questions.
+
+The normal build is:
+
+```bash
+docker build -f Dockerfile.sandbox -t talktomyexcel-sandbox:latest .
+```
+
+This starts from `python:3.11-slim` and installs the sandbox data libraries
+declared in `Dockerfile.sandbox`: `pandas`, `openpyxl`, `xlrd`, and `pyarrow`.
+Use this build for a regular local setup or a regular server deployment.
+
+There is also an advanced build variant:
+
+```bash
+docker build -f Dockerfile.sandbox \
+  --build-arg SANDBOX_BASE=code-interpreter:latest \
+  --build-arg INSTALL_SANDBOX_DEPS=0 \
+  -t talktomyexcel-sandbox:latest .
+```
+
+This exists only for environments that already maintain a compatible sandbox
+base image with the required Python data libraries preinstalled. `SANDBOX_BASE`
+selects that base image, while `INSTALL_SANDBOX_DEPS=0` avoids reinstalling the
+same dependencies inside this project build. If the base image is not available,
+or if you are not deliberately managing a shared sandbox base image, use the
+normal build.
+
 ## Users and Workspaces
 
 Each user gets an isolated workspace:
@@ -84,5 +124,10 @@ If upload profiling fails, check Docker:
 docker images | grep talktomyexcel-sandbox
 docker build -f Dockerfile.sandbox -t talktomyexcel-sandbox:latest .
 ```
+
+Use the advanced `SANDBOX_BASE` / `INSTALL_SANDBOX_DEPS=0` build only when the
+chosen base image already contains `pandas`, `openpyxl`, `xlrd`, and `pyarrow`.
+Otherwise the sandbox worker will not be able to read uploaded Excel, CSV, TSV,
+or Parquet files.
 
 If Regolo.ai calls fail, verify `REGOLO_API_KEY` and selected model names in Settings.

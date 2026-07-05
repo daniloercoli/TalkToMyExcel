@@ -11,42 +11,6 @@ It uses a hybrid engine:
 
 The project is MIT licensed.
 
-## Public Website
-
-The public static website lives in [public-site](public-site) and is configured
-for:
-
-```text
-https://talktomyexcel.ercoliconsulting.eu/
-```
-
-It presents the same product boundary as the application:
-
-- Upload and import of tabular files: `.xlsx`, `.xls`, `.csv`, `.tsv`, `.parquet`.
-- DuckDB for structured questions, Chroma for semantic text search.
-- Per-user workspaces for imported datasets.
-- Regolo.ai as the recommended provider for European, zero-retention AI usage.
-- Static marketing/privacy pages only; the public website does not receive file uploads.
-
-Publishing is handled by the GitHub Pages workflow in
-[.github/workflows/pages.yml](.github/workflows/pages.yml). In the GitHub repo,
-enable Pages with GitHub Actions as the source, then point the custom domain to
-GitHub Pages. The site artifact includes [public-site/CNAME](public-site/CNAME).
-
-## Clean Public Repo
-
-To publish the code from a clean repository without carrying over this local
-repository history, sync a snapshot into a separate directory:
-
-```bash
-scripts/sync-public-repo.sh --init /path/to/TalkToMyExcel-public
-```
-
-The sync copies tracked files plus non-ignored new files, and excludes local
-secrets, runtime uploads, runtime data, logs, and this repository's `.git`
-directory. Review the destination, then commit and push it to the new GitHub
-repository.
-
 ## 5-Minute Start
 
 Requirements:
@@ -71,7 +35,20 @@ docker build -f Dockerfile.sandbox -t talktomyexcel-sandbox:latest .
 python -m app.app
 ```
 
-Build the sandbox with:
+The sandbox image is required by the running app. It is used to profile uploaded
+files and to run generated Python analysis in a short-lived Docker container,
+separate from the Flask server process.
+
+The standard build above starts from `python:3.11-slim` and installs the sandbox
+dependencies declared in `Dockerfile.sandbox` (`pandas`, `openpyxl`, `xlrd`, and
+`pyarrow`). Use this command unless you have a specific reason to reuse an
+already prepared base image:
+
+```bash
+docker build -f Dockerfile.sandbox -t talktomyexcel-sandbox:latest .
+```
+
+Advanced variant:
 
 ```bash
 docker build -f Dockerfile.sandbox \
@@ -79,6 +56,13 @@ docker build -f Dockerfile.sandbox \
   --build-arg INSTALL_SANDBOX_DEPS=0 \
   -t talktomyexcel-sandbox:latest .
 ```
+
+This variant exists for deployments that already maintain a compatible sandbox
+base image, such as `code-interpreter:latest`, with the required Python data
+libraries preinstalled. `SANDBOX_BASE` swaps the base image, and
+`INSTALL_SANDBOX_DEPS=0` skips reinstalling those dependencies during this
+project's image build. If that base image is not available, or if you are setting
+up TalkToMyExcel normally, use the standard build.
 
 Open http://127.0.0.1:5001.
 
