@@ -28,6 +28,8 @@ class Config:
     PYTHON_SANDBOX_IMAGE = os.getenv("PYTHON_SANDBOX_IMAGE", SANDBOX_IMAGE)
     PYTHON_SANDBOX_TIMEOUT = int(os.getenv("PYTHON_SANDBOX_TIMEOUT", "20"))
     PYTHON_SANDBOX_MEMORY = os.getenv("PYTHON_SANDBOX_MEMORY", "768m")
+    DEMO_ENABLED = os.getenv("DEMO_ENABLED", "").lower() in {"1", "true", "yes", "on"}
+    DEMO_TIMEOUT_MINUTES = int(os.getenv("DEMO_TIMEOUT_MINUTES", "30"))
 
 
 def ensure_dirs() -> None:

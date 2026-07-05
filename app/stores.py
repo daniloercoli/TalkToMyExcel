@@ -43,11 +43,20 @@ class UserStore:
     def save(self, users: list[dict]) -> None:
         self.path.write_text(json.dumps({"users": users}, indent=2, sort_keys=True), encoding="utf-8")
 
-    def create(self, email: str, password: str, role: str = "user", display_name: str = "") -> dict:
+    def create(
+        self,
+        email: str,
+        password: str,
+        role: str = "user",
+        display_name: str = "",
+        *,
+        is_demo: bool = False,
+    ) -> dict:
         email = email.strip().lower()
         users = self.list()
         if any(user["email"] == email for user in users):
             raise ValueError("User already exists")
+        created_at = now()
         user = {
             "id": slug(email),
             "email": email,
@@ -55,12 +64,48 @@ class UserStore:
             "password_hash": generate_password_hash(password),
             "role": role if role in {"admin", "user"} else "user",
             "enabled": True,
-            "created_at": now(),
-            "updated_at": now(),
+            "created_at": created_at,
+            "updated_at": created_at,
         }
+        if is_demo:
+            user["is_demo"] = True
+            user["last_seen_at"] = created_at
         users.append(user)
         self.save(users)
         return public_user(user)
+
+    def create_demo(self) -> dict:
+        for _attempt in range(5):
+            token = secrets.token_hex(4)
+            try:
+                return self.create(
+                    email=f"demo-{token}@demo.local",
+                    password=secrets.token_urlsafe(24),
+                    display_name="Demo session",
+                    is_demo=True,
+                )
+            except ValueError:
+                continue
+        raise ValueError("Could not create demo user")
+
+    def touch(self, user_id: str) -> dict | None:
+        users = self.list()
+        timestamp = now()
+        for user in users:
+            if user["id"] == user_id:
+                user["updated_at"] = timestamp
+                user["last_seen_at"] = timestamp
+                self.save(users)
+                return public_user(user)
+        return None
+
+    def delete(self, user_id: str) -> bool:
+        users = self.list()
+        kept = [user for user in users if user["id"] != user_id]
+        if len(kept) == len(users):
+            return False
+        self.save(kept)
+        return True
 
     def authenticate(self, email: str, password: str) -> dict | None:
         email = email.strip().lower()

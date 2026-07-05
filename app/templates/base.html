@@ -27,6 +27,9 @@
     </nav>
   </header>
   <main class="shell">
+    {% if user and user.is_demo %}
+      <div class="demo-banner">Demo temporanea: non caricare dati personali o riservati. Il workspace viene eliminato dopo 30 minuti di inattivita.</div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
   <script>

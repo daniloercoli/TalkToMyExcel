@@ -25,15 +25,51 @@ def create_app() -> Flask:
     def add_request_id():
         request.request_id = uuid.uuid4().hex[:12]
 
+    if Config.DEMO_ENABLED:
+        from app.demo import cleanup_expired_demo_users, delete_demo_user, is_demo_expired
+
+        @app.before_request
+        def refresh_demo_session():
+            if request.endpoint in {"static", "demo_start"}:
+                return None
+            user_id = session.get("user_id")
+            if not user_id:
+                return None
+            user_store = UserStore()
+            user = user_store.get(user_id)
+            if not user:
+                session.clear()
+                return redirect(url_for("login"))
+            if not user.get("is_demo"):
+                return None
+            if is_demo_expired(user):
+                delete_demo_user(user_id, store=user_store)
+                session.clear()
+                return redirect(url_for("login", demo_expired="1"))
+            user_store.touch(user_id)
+            return None
+
+        @app.post("/demo/start")
+        def demo_start():
+            cleanup_expired_demo_users()
+            user = UserStore().create_demo()
+            session["user_id"] = user["id"]
+            log.info("demo_started", extra={"request_id": request.request_id, "user_id": user["id"]})
+            return redirect(url_for("home"))
+
     @app.get("/login")
     def login():
-        return render_template("login.html")
+        return render_template(
+            "login.html",
+            demo_enabled=Config.DEMO_ENABLED,
+            demo_expired=Config.DEMO_ENABLED and request.args.get("demo_expired") == "1",
+        )
 
     @app.post("/login")
     def login_post():
         user = UserStore().authenticate(request.form.get("email", ""), request.form.get("password", ""))
         if not user:
-            return render_template("login.html", error="Invalid credentials"), 401
+            return render_template("login.html", error="Invalid credentials", demo_enabled=Config.DEMO_ENABLED), 401
         session["user_id"] = user["id"]
         log.info("login", extra={"request_id": request.request_id, "user_id": user["id"]})
         return redirect(url_for("home"))

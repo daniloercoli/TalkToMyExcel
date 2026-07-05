@@ -170,6 +170,17 @@ textarea {
   margin: 24px auto;
 }
 
+.demo-banner {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 700;
+}
+
 .workspace-layout {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
@@ -457,6 +468,11 @@ button:disabled {
   background: var(--brand-strong);
 }
 
+.secondary {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
 .danger {
   border-color: var(--danger);
   background: var(--danger);
@@ -626,6 +642,19 @@ button:disabled {
   margin-bottom: 0;
   color: var(--danger);
   font-weight: 750;
+}
+
+.demo-start {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.demo-start p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .page-heading {
