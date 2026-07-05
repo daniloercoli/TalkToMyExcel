@@ -1,0 +1,19 @@
+ARG SANDBOX_BASE=python:3.11-slim
+FROM ${SANDBOX_BASE}
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+ARG INSTALL_SANDBOX_DEPS=1
+RUN if [ "$INSTALL_SANDBOX_DEPS" = "1" ]; then pip install --no-cache-dir \
+    pandas==2.2.3 \
+    openpyxl==3.1.5 \
+    xlrd==2.0.1 \
+    pyarrow==18.1.0; fi
+
+WORKDIR /sandbox
+COPY sandbox/worker.py /sandbox/worker.py
+COPY sandbox/python_runner.py /sandbox/python_runner.py
+
+USER nobody
+ENTRYPOINT ["python", "/sandbox/worker.py"]

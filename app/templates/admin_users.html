@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Users - TalkToMyExcel{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">Admin</p>
+    <h1>Users</h1>
+  </div>
+</section>
+
+<section class="grid-two">
+  <form class="panel compact" method="post">
+    <h2>Create user</h2>
+    {% if error %}<p class="alert">{{ error }}</p>{% endif %}
+    <label>Name<input name="display_name" type="text"></label>
+    <label>Email<input name="email" type="email" required></label>
+    <label>Password<input name="password" type="password" required></label>
+    <label>Role
+      <select name="role">
+        <option value="user">User</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+    <button class="primary" type="submit">Create user</button>
+  </form>
+  <div class="panel">
+    <h2>Existing users</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for account in users %}
+          <tr>
+            <td>{{ account.display_name }}</td>
+            <td>{{ account.email }}</td>
+            <td>{{ account.role }}</td>
+            <td>{{ "Enabled" if account.enabled else "Disabled" }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}TalkToMyExcel{% endblock %}
+{% block content %}
+<section class="workspace-layout">
+  <aside class="side-panel">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Workspace</p>
+        <h1>Dataset</h1>
+      </div>
+    </div>
+    <div id="activeDataset" class="dataset-card" data-has-active="{{ '1' if active else '0' }}">
+      {% if active %}
+        <div class="dataset-list">
+          {% for dataset in active.datasets %}
+            <div class="dataset-item" data-dataset-id="{{ dataset.id }}">
+              <span class="dataset-dot"></span>
+              <div>
+                <strong>{{ dataset.filename }}</strong>
+                <span>{{ dataset.tables|length }} {{ "table" if dataset.tables|length == 1 else "tables" }} active</span>
+              </div>
+              <button class="remove-dataset" type="button" data-dataset-id="{{ dataset.id }}" title="Remove dataset">Remove</button>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <span class="dataset-dot muted-dot"></span>
+        <div>
+          <strong>No workspace data</strong>
+          <span>Upload a spreadsheet to begin.</span>
+        </div>
+      {% endif %}
+    </div>
+
+    <form id="uploadForm" class="upload-zone">
+      <label class="file-picker">
+        <span>Workbook file</span>
+        <span class="file-control">
+          <span class="file-button">Choose file</span>
+          <span id="fileName" class="file-name">No file selected</span>
+          <input id="fileInput" class="visually-hidden" type="file" name="file" accept=".xlsx,.xls,.csv,.tsv,.parquet" required>
+        </span>
+      </label>
+      <button class="primary" type="submit">Upload</button>
+    </form>
+
+    <div id="profilePanel" class="profile-panel" hidden>
+      <div class="section-head compact-head">
+        <h2>Import setup</h2>
+        <span class="status-pill">Staged</span>
+      </div>
+      <div id="sheetList"></div>
+      <button class="primary" id="importButton" type="button">Import selected data</button>
+    </div>
+  </aside>
+
+  <section class="chat-panel">
+    <div class="chat-header">
+      <div>
+        <p class="eyebrow">Analysis</p>
+        <h2>Ask your workbook</h2>
+      </div>
+      <span id="chatStatus" class="status-pill">
+        {% if active %}
+          {{ active.datasets|length }} {{ "dataset" if active.datasets|length == 1 else "datasets" }}
+        {% else %}
+          No dataset
+        {% endif %}
+      </span>
+    </div>
+    <div id="messages" class="messages">
+      <div id="emptyChat" class="empty-chat">
+        {% if active %}
+          <strong>Ready for analysis</strong>
+          <div class="prompt-grid">
+            <button type="button" class="prompt-chip" data-prompt="Count open cases by status.">Open cases by status</button>
+            <button type="button" class="prompt-chip" data-prompt="Which rows look similar to motor vibration?">Similar issues</button>
+            <button type="button" class="prompt-chip" data-prompt="Show the highest priority unresolved items.">Priority review</button>
+          </div>
+        {% else %}
+          <strong>No dataset loaded</strong>
+        {% endif %}
+      </div>
+    </div>
+    <form id="chatForm" class="composer">
+      <textarea id="questionInput" rows="2" placeholder="Which open cases look similar to motor vibration?"></textarea>
+      <button class="primary" type="submit">Ask</button>
+    </form>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

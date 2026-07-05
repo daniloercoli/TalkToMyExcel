@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sicurezza - TalkToMyExcel</title>
+  <meta name="description" content="TalkToMyExcel usa sandbox file, workspace separati, provider AI sicuri e Regolo.ai per scenari con dati aziendali importanti.">
+  <link rel="canonical" href="https://talktomyexcel.ercoliconsulting.eu/sicurezza.html">
+  <meta property="og:title" content="Sicurezza - TalkToMyExcel">
+  <meta property="og:description" content="AI su dati aziendali con perimetro, auditabilita e provider europeo consigliato.">
+  <meta property="og:url" content="https://talktomyexcel.ercoliconsulting.eu/sicurezza.html">
+  <meta property="og:image" content="https://talktomyexcel.ercoliconsulting.eu/assets/hero-data-chat.png">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" href="assets/service-icon-512.png">
+  <link rel="apple-touch-icon" href="assets/service-icon-512.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="TalkToMyExcel home">
+      <img src="assets/service-icon-512.png" alt="" width="40" height="40">
+      <span>TalkToMyExcel</span>
+    </a>
+    <nav class="nav-links" aria-label="Navigazione principale">
+      <a href="index.html">Home</a>
+      <a href="piattaforma.html">Piattaforma</a>
+      <a class="active" href="sicurezza.html">Sicurezza</a>
+      <a href="regolo.html">Regolo.ai</a>
+      <a href="contatti.html">Contatti</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="page-hero security-hero">
+      <div>
+        <p class="eyebrow">AI sicura</p>
+        <h1>I fogli aziendali non sono prompt qualsiasi.</h1>
+        <p>Dentro Excel e CSV ci sono clienti, prezzi, difetti, reclami, costi, fornitori e decisioni operative. TalkToMyExcel mette un perimetro tecnico attorno all'AI prima ancora di generare una risposta.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Perimetro</p>
+        <h2>Quattro controlli prima della risposta.</h2>
+      </div>
+      <div class="cards four">
+        <article>
+          <h3>Sandbox file</h3>
+          <p>La profilazione dei file gira in un container isolato, senza rete e con filesystem principale separato.</p>
+        </article>
+        <article>
+          <h3>Workspace separati</h3>
+          <p>Ogni utente lavora su dataset, DuckDB e indice semantico dedicati.</p>
+        </article>
+        <article>
+          <h3>Provider controllato</h3>
+          <p>Regolo.ai e la scelta consigliata per inferenza europea, zero retention e no training sui dati cliente.</p>
+        </article>
+        <article>
+          <h3>Evidenze ridotte</h3>
+          <p>Il modello riceve solo il contesto necessario alla risposta, non il file intero senza criterio.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section split">
+      <div>
+        <p class="eyebrow">Architettura</p>
+        <h2>Il modello non e il database.</h2>
+      </div>
+      <div class="prose">
+        <p>DuckDB gestisce query strutturate, filtri e conteggi. Chroma gestisce similarita testuale sulle colonne scelte. L'LLM entra alla fine, quando ci sono gia evidenze compatte da spiegare.</p>
+        <p>Questo riduce il rischio di allucinazioni e rende piu semplice capire da dove arriva una risposta: righe, tabelle e colonne restano parte della conversazione.</p>
+      </div>
+    </section>
+
+    <section class="section dark-panel">
+      <div>
+        <p class="eyebrow">Regolo.ai consigliato</p>
+        <h2>Sovranita europea e zero retention per i dati che contano.</h2>
+        <p>Con Regolo.ai, prompt e output sono gestiti in memoria dalla layer di inferenza e non sono persistiti. I contenuti delle richieste cliente non vengono usati per training o fine-tuning di modelli condivisi.</p>
+        <a class="button light" href="regolo.html">Dettagli su Regolo.ai</a>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Cosa evitare</p>
+        <h2>La differenza rispetto a un chatbot generico.</h2>
+      </div>
+      <div class="comparison">
+        <article>
+          <h3>Chatbot generico</h3>
+          <ul>
+            <li>File copiato nel prompt senza struttura.</li>
+            <li>Provider scelto solo per comodita o costo.</li>
+            <li>Poca visibilita su retention e training.</li>
+            <li>Risposte difficili da ricondurre alle righe.</li>
+          </ul>
+        </article>
+        <article class="highlight">
+          <h3>TalkToMyExcel</h3>
+          <ul>
+            <li>File profilato e importato come dataset.</li>
+            <li>Regolo.ai consigliato per compliance e zero retention.</li>
+            <li>Motore ibrido con evidenze selezionate.</li>
+            <li>Risposte citate e controllabili dal team.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div>
+        <p class="eyebrow">Valutazione</p>
+        <h2>Porta il caso d'uso piu delicato.</h2>
+        <p>Se funziona sui dati sensibili, funziona anche sui dati semplici.</p>
+      </div>
+      <a class="button primary" href="contatti.html">Parliamone</a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div>
+      <strong>TalkToMyExcel</strong>
+      <p>AI sicura per Excel, CSV e dati aziendali.</p>
+    </div>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="piattaforma.html">Piattaforma</a>
+      <a href="regolo.html">Regolo.ai</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="mailto:ttme@ercoliconsulting.eu">ttme@ercoliconsulting.eu</a>
+    </nav>
+    <div class="footer-bottom">
+      <span>© 2026 Ercoli Consulting srl. MIT License.</span>
+      <span>Open Source · Self-hosted · Made in RSM &amp; Italy</span>
+    </div>
+  </footer>
+</body>
+</html>

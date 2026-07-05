@@ -1,0 +1,9 @@
+[project]
+name = "talktomyexcel"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Hybrid tabular chat for Excel and CSV after-sales data."
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

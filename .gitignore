@@ -1,0 +1,42 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Python/local tooling
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Runtime user data
+app/data/
+app/uploads/
+app/logs/
+
+# Local databases and exported datasets
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.xlsm
+*.parquet
+
+# Private keys/certificates
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/

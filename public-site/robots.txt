@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://talktomyexcel.ercoliconsulting.eu/sitemap.xml

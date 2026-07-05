@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TalkToMyExcel{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('home') }}">
+      <span class="brand-mark">T</span>
+      <span>TalkToMyExcel</span>
+    </a>
+    <nav class="nav">
+      {% if user %}
+        {% if user.role == "admin" %}
+          <a href="{{ url_for('settings_page') }}">Settings</a>
+          <a href="{{ url_for('users_page') }}">Users</a>
+        {% endif %}
+        <span class="user-pill">{{ user.display_name or user.email }}</span>
+        <button class="theme-toggle" type="button" id="themeToggle" title="Toggle theme" aria-label="Toggle theme">◐</button>
+        <form method="post" action="{{ url_for('logout') }}">
+          <button class="link-button" type="submit">Sign out</button>
+        </form>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="shell">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    const savedTheme = localStorage.getItem("ttme-theme");
+    if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+    document.getElementById("themeToggle")?.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem("ttme-theme", next);
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Settings - TalkToMyExcel{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">Admin</p>
+    <h1>Provider settings</h1>
+  </div>
+</section>
+
+<form class="panel settings-grid" method="post">
+  <div>
+    <h2>Chat model</h2>
+    <p class="muted">Regolo.ai is the recommended provider. Other OpenAI-compatible providers can be added in settings JSON.</p>
+    <label>Provider
+      <select name="chat_provider" id="chatProvider">
+        {% for provider in llm_providers %}
+          <option value="{{ provider.id }}" {% if settings.chat.provider == provider.id %}selected{% endif %}>{{ provider.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Model
+      <select name="chat_model" id="chatModel">
+        {% for provider in llm_providers %}
+          {% for model in provider.models %}
+            <option data-provider="{{ provider.id }}" value="{{ model }}" {% if settings.chat.provider == provider.id and settings.chat.model == model %}selected{% endif %}>{{ model }}</option>
+          {% endfor %}
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div>
+    <h2>Embedding model</h2>
+    <p class="muted">Use Regolo.ai embeddings by default, or local embeddings when data must stay fully local.</p>
+    <label>Provider
+      <select name="embedding_provider" id="embeddingProvider">
+        {% for provider in embedding_providers %}
+          <option value="{{ provider.id }}" {% if settings.embedding.provider == provider.id %}selected{% endif %}>{{ provider.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Model
+      <select name="embedding_model" id="embeddingModel">
+        {% for provider in embedding_providers %}
+          {% for model in provider.models %}
+            <option data-provider="{{ provider.id }}" value="{{ model }}" {% if settings.embedding.provider == provider.id and settings.embedding.model == model %}selected{% endif %}>{{ model }}</option>
+          {% endfor %}
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="form-actions">
+    <button class="primary" type="submit">Save settings</button>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+  function bindProvider(providerId, modelId) {
+    const provider = document.getElementById(providerId);
+    const model = document.getElementById(modelId);
+    const filter = () => {
+      [...model.options].forEach(option => option.hidden = option.dataset.provider !== provider.value);
+      if (model.selectedOptions[0]?.hidden) {
+        const first = [...model.options].find(option => !option.hidden);
+        if (first) model.value = first.value;
+      }
+    };
+    provider.addEventListener("change", filter);
+    filter();
+  }
+  bindProvider("chatProvider", "chatModel");
+  bindProvider("embeddingProvider", "embeddingModel");
+</script>
+{% endblock %}

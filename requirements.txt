@@ -1,0 +1,11 @@
+Flask>=3.1,<4
+gunicorn>=23,<26; platform_system != "Windows"
+python-dotenv>=1.0,<2
+openai>=1.50,<3
+docker>=7.0,<8
+duckdb>=1.1,<2
+chromadb>=1.0.21,<1.1
+numpy>=1.26,<3
+sentence-transformers>=5.0,<6
+torch>=2.4,<3; sys_platform != "darwin" or platform_machine != "x86_64"
+transformers>=5.0,<6
