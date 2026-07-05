@@ -91,6 +91,29 @@ a {
   color: var(--green-dark);
 }
 
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .72);
+}
+
+.lang-switch a {
+  min-width: 30px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  text-align: center;
+  font-size: .78rem;
+}
+
+.lang-switch a.active {
+  color: #fff;
+  background: var(--green-dark);
+}
+
 .hero {
   position: relative;
   min-height: 560px;
@@ -404,7 +427,7 @@ p {
   color: var(--ink);
   background:
     linear-gradient(90deg, rgba(246, 250, 248, .98), rgba(246, 250, 248, .78)),
-    url("assets/hero-data-chat.webp") center right / cover;
+    url("../assets/hero-data-chat.webp") center right / cover;
 }
 
 .page-hero p:not(.eyebrow) {
@@ -418,7 +441,7 @@ p {
 .security-hero {
   background:
     linear-gradient(90deg, rgba(15, 39, 66, .96), rgba(15, 39, 66, .72)),
-    url("assets/hero-data-chat.webp") center right / cover;
+    url("../assets/hero-data-chat.webp") center right / cover;
 }
 
 .security-hero h1,

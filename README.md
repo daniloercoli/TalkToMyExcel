@@ -11,6 +11,22 @@ It uses a hybrid engine:
 
 The project is MIT licensed.
 
+## Public Website
+
+The static public website lives in [public-site](public-site) and is configured
+for:
+
+```text
+https://talktomyexcel.ercoliconsulting.eu/
+```
+
+It follows the same bilingual structure used by the RAGuardian public site:
+
+- `public-site/index.html` redirects visitors to Italian or English.
+- `public-site/it/` contains the Italian pages.
+- `public-site/en/` contains the English pages.
+- `public-site/css/` and `public-site/assets/` contain shared styling and media.
+
 ## 5-Minute Start
 
 Requirements:

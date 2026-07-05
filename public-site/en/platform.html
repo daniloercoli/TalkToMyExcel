@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Platform - TalkToMyExcel</title>
+  <meta name="description" content="How TalkToMyExcel works: tabular file uploads, sandboxing, DuckDB, Chroma and cited AI answers.">
+  <link rel="canonical" href="https://talktomyexcel.ercoliconsulting.eu/en/platform.html">
+  <meta property="og:title" content="Platform - TalkToMyExcel">
+  <meta property="og:description" content="From Excel or CSV file to a verifiable AI answer.">
+  <meta property="og:url" content="https://talktomyexcel.ercoliconsulting.eu/en/platform.html">
+  <meta property="og:image" content="https://talktomyexcel.ercoliconsulting.eu/assets/hero-data-chat.png">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" href="../assets/service-icon-512.png">
+  <link rel="apple-touch-icon" href="../assets/service-icon-512.png">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="TalkToMyExcel home">
+      <img src="../assets/service-icon-512.png" alt="" width="40" height="40">
+      <span>TalkToMyExcel</span>
+    </a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a class="active" href="platform.html">Platform</a>
+      <a href="security.html">Security</a>
+      <a href="regolo.html">Regolo.ai</a>
+      <a href="contact.html">Contact</a>
+      <span class="lang-switch"><a href="../it/piattaforma.html">IT</a><a class="active" href="platform.html">EN</a></span>
+    </nav>
+  </header>
+
+  <main>
+    <section class="page-hero">
+      <div>
+        <p class="eyebrow">Platform</p>
+        <h1>From spreadsheet to answer, without turning everything into indistinct text.</h1>
+        <p>TalkToMyExcel treats tabular data as tabular data: rows, columns, filters, counts and descriptive text remain separate and controllable elements.</p>
+      </div>
+    </section>
+
+    <section class="section process">
+      <div class="step">
+        <span>01</span>
+        <h3>Upload the file</h3>
+        <p>Excel, CSV, TSV and Parquet files are saved in staging and profiled before replacing or adding to the active dataset.</p>
+      </div>
+      <div class="step">
+        <span>02</span>
+        <h3>Choose what to index</h3>
+        <p>The system suggests the descriptive columns most useful for semantic search, but the final choice remains explicit.</p>
+      </div>
+      <div class="step">
+        <span>03</span>
+        <h3>Ask the data</h3>
+        <p>Questions about counts and status go through DuckDB; similar cases and descriptions go through Chroma.</p>
+      </div>
+      <div class="step">
+        <span>04</span>
+        <h3>Read a cited answer</h3>
+        <p>The model generates the answer from compact evidence, not from the entire file pasted into a prompt.</p>
+      </div>
+    </section>
+
+    <section class="section split">
+      <div>
+        <p class="eyebrow">Formats and scenarios</p>
+        <h2>One entry point for exports, reports and spreadsheets.</h2>
+      </div>
+      <div class="cards two">
+        <article>
+          <h3>Current inputs</h3>
+          <p>Excel workbooks `.xlsx/.xls`, `.csv`, `.tsv` and `.parquet` files. They are the simplest starting point for business datasets you already have.</p>
+        </article>
+        <article>
+          <h3>Business use</h3>
+          <p>After-sales, maintenance, tickets, quality, price lists, spare parts, CRM exports and periodic reports: different data, same question experience.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section visual-split">
+      <figure>
+        <picture>
+          <source srcset="../assets/data-sources.webp" type="image/webp">
+          <img src="../assets/data-sources.png" alt="Datasets and business panels connected together" loading="lazy">
+        </picture>
+      </figure>
+      <div>
+        <p class="eyebrow">Hybrid engine</p>
+        <h2>Precise numbers when numbers matter. Semantics when meaning matters.</h2>
+        <p>An LLM alone can be brilliant but approximate. TalkToMyExcel uses it as a reasoning and synthesis layer, while filters, rows and counts stay handled by dedicated data components.</p>
+        <a class="text-link" href="security.html">See the security boundary</a>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div>
+        <p class="eyebrow">Demo</p>
+        <h2>Bring a concrete use case.</h2>
+        <p>A real spreadsheet, a hard question, a result that can be checked.</p>
+      </div>
+      <a class="button primary" href="contact.html">Book a demo</a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div>
+      <strong>TalkToMyExcel</strong>
+      <p>Secure AI for Excel, CSV and business data.</p>
+    </div>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="security.html">Security</a>
+      <a href="regolo.html">Regolo.ai</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="mailto:ttme@ercoliconsulting.eu">ttme@ercoliconsulting.eu</a>
+    </nav>
+    <div class="footer-bottom">
+      <span>© 2026 Ercoli Consulting srl. MIT License.</span>
+      <span>Open Source · Self-hosted · Made in RSM &amp; Italy</span>
+    </div>
+  </footer>
+</body>
+</html>
