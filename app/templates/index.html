@@ -90,5 +90,7 @@
 </section>
 {% endblock %}
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.3/purify.min.js"></script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 {% endblock %}

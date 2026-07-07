@@ -41,9 +41,14 @@ cd TalkToMyExcel
 
 python3 -m venv .venv
 source .venv/bin/activate
+# On Windows CMD: 
+# .venv\Scripts\activate.bat
+# otherwise on PowerShell
+# .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 
 cp .env.example .env
+# On windows: copy .env.example .env
 # edit .env and set REGOLO_API_KEY
 
 docker build -f Dockerfile.sandbox -t talktomyexcel-sandbox:latest .

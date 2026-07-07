@@ -6,92 +6,333 @@ import re
 from app.logging_config import log
 from app.providers.factory import get_embedding_provider, get_llm_provider, load_settings
 from app.python_sandbox import run_python_analysis
+from app.routing import QueryRouter, RoutePlan
 from app.stores import Workspace
 from app.vector_store import query_rows
 from app.workbook import active_workbook, fetch_rows, quote_ident
 
-
-STATUS_WORDS = {"status", "state", "stato"}
 OPEN_WORDS = {"open", "opened", "aperto", "aperta", "aperti", "aperte"}
-COUNT_WORDS = {"how many", "count", "quanti", "quante", "numero"}
-SIMILAR_WORDS = {"similar", "simili", "similarity", "assomiglia", "like"}
-ID_WORDS = {"matricola", "serial", "serial number", "asset", "machine"}
-PYTHON_WORDS = {
-    "average", "mean", "median", "std", "standard deviation", "correlation", "ratio",
-    "percentage", "percent", "trend", "outlier", "anomaly", "diff", "difference",
-    "missing", "compare", "between columns", "calcola", "calcolo", "media", "mediana",
-    "correlazione", "percentuale", "rapporto", "anomalia", "differenza", "differenze", "mancanti",
-    "confronta", "confronto", "colonne",
-}
-ROUTES = {"count", "status", "semantic", "python"}
+STATUS_WORDS = {"status", "state", "stato"}
+ID_WORDS = {"matricola", "serial", "serial number", "asset", "machine", "richiesta", "request", "ticket", "case"}
+MAX_LLM_MESSAGES = 20
+MAX_SQL_ROWS = 200
+MAX_HYBRID_FILTER_ROWS = 1000
+ROUTER = QueryRouter()
 
 
-def answer_question(workspace: Workspace, question: str, request_id: str = "") -> dict:
+def classify(question: str) -> str:
+    return ROUTER.plan(question, {}).route
+
+
+def plan_route(question: str, metadata: dict, request_id: str = "") -> dict:
+    plan = ROUTER.plan(question, metadata)
+    return {"route": plan.route, "reason": plan.reason}
+
+
+def generate_sql_query(question: str, metadata: dict) -> str:
+    """Generates a DuckDB SQL query based on the user's question and table metadata"""
+    settings = load_settings()
+    llm, model = get_llm_provider(settings)
+    
+    system = (
+        "You are a DuckDB SQL expert. Generate a SQL query that answers the user's question based on the provided schema. "
+        "Return ONLY a valid JSON object: {\"sql\": \"SELECT ...\"}. "
+        "RULES:\n"
+        "1. Use only the table names provided in the metadata.\n"
+        "2. Use double quotes for identifiers (table/column names) to handle spaces/special characters: e.g., \"My Table\".\n"
+        "3. For filters, use the = operator and single quotes for values: e.g., \"Status\" = 'WIP'.\n"
+        "4. Use standard DuckDB SQL syntax.\n"
+        "5. If the question asks for a count, use count(*).\n"
+        "6. For detail requests (e.g. 'details of ID 123'), use SELECT * FROM \"table\" WHERE \"ID_COLUMN\" = '123'.\n"
+        "7. For grouped counts, use GROUP BY and return the group column plus count(*).\n"
+        "8. Only generate read-only SELECT queries. No INSERT, UPDATE, DELETE, CREATE, DROP, COPY, PRAGMA, ATTACH, INSTALL, or LOAD.\n"
+        "9. Only return the SQL query, no explanations."
+    )
+    
+    user = f"Question:\n{question}\n\nWorkbook Schema:\n{metadata_summary(metadata)}"
+    
+    raw = llm.generate(system, user, model=model, temperature=0.0)
+    try:
+        payload = parse_json_object(raw)
+        return str(payload.get("sql") or "").strip()
+    except Exception:
+        code = extract_fenced_code(raw)
+        return code if code else ""
+
+
+def generate_hybrid_filter_sql(question: str, metadata: dict) -> str:
+    """Generate a row_id filter query for hybrid SQL + semantic retrieval."""
+    settings = load_settings()
+    llm, model = get_llm_provider(settings)
+
+    system = (
+        "You are a DuckDB SQL expert for hybrid spreadsheet retrieval. "
+        "Return ONLY a valid JSON object: {\"sql\": \"SELECT row_id FROM ... WHERE ...\"}. "
+        "Your job is to extract ONLY the structured filters from the user question. "
+        "The semantic/text part will be handled by vector search later. "
+        "RULES:\n"
+        "1. If there is no reliable structured filter, return {\"sql\": \"\"}.\n"
+        "2. Select only row_id from one provided table, or use UNION ALL when multiple tables apply.\n"
+        "3. Use only table and column names from metadata.\n"
+        "4. Use double quotes for identifiers and single quotes for values.\n"
+        "5. Good structured filters include status/state, product, priority, date, customer, serial, sheet, and filename.\n"
+        "6. Do not filter on semantic similarity, notes, symptoms, problem descriptions, or causes.\n"
+        "7. Only generate read-only SELECT/WITH SQL. No INSERT, UPDATE, DELETE, CREATE, DROP, COPY, PRAGMA, ATTACH, INSTALL, or LOAD.\n"
+        f"8. Add LIMIT {MAX_HYBRID_FILTER_ROWS + 1} unless the query already has a stricter limit.\n"
+        "9. Return no explanations."
+    )
+    user = f"Question:\n{question}\n\nWorkbook Schema:\n{metadata_summary(metadata)}"
+
+    raw = llm.generate(system, user, model=model, temperature=0.0)
+    try:
+        payload = parse_json_object(raw)
+        return str(payload.get("sql") or "").strip()
+    except Exception:
+        code = extract_fenced_code(raw)
+        return code if code else ""
+
+
+def answer_question(workspace: Workspace, question: str, request_id: str = "", conversation_history: list[dict] | None = None) -> dict:
     metadata = active_workbook(workspace)
     if not metadata:
         return {"answer": "No workspace data. Upload and import a tabular file first.", "route": "no_dataset", "sources": []}
 
-    route_plan = plan_route(question, metadata, request_id=request_id)
-    route = route_plan["route"]
+    route_plan = ROUTER.plan(question, metadata)
     log.info(
         "query_route",
-        extra={"request_id": request_id, "workspace_id": workspace.workspace_id, "route": route},
+        extra={
+            "request_id": request_id,
+            "workspace_id": workspace.workspace_id,
+            "route": route_plan.route,
+            "reason": route_plan.reason,
+            "candidates": list(route_plan.ordered_routes()),
+            "execution": route_plan.execution,
+        },
     )
-    if route == "count":
-        context = count_context(workspace, metadata, question)
-    elif route == "status":
-        context = status_context(workspace, metadata, question)
-    elif route == "python":
-        return python_answer(workspace, metadata, question, route_plan, request_id=request_id)
-    else:
-        context = semantic_context(workspace, metadata, question)
-
-    if not context["rows"] and route != "count":
-        return {
-            "answer": "I could not find matching rows in the active workspace data.",
-            "route": route,
-            "sources": [],
-            "debug": context.get("debug", {}),
-        }
-    return llm_answer(question, context, route)
+    
+    return try_route(workspace, metadata, question, route_plan, request_id, conversation_history)
 
 
-def classify(question: str) -> str:
-    low = question.lower()
-    if any(word in low for word in STATUS_WORDS) and any(word in low for word in ID_WORDS):
-        return "status"
-    if has_any_word(low, PYTHON_WORDS):
-        return "python"
-    if any(word in low for word in COUNT_WORDS):
-        return "count"
-    if any(word in low for word in SIMILAR_WORDS):
-        return "semantic"
-    return "semantic"
-
-
-def plan_route(question: str, metadata: dict, request_id: str = "") -> dict:
-    route = classify(question)
-    if route != "semantic":
-        return {"route": route, "reason": "heuristic"}
-
-    settings = load_settings()
-    try:
-        llm, model = get_llm_provider(settings)
-        system = (
-            "Route spreadsheet questions for TalkToMyExcel. "
-            "Return JSON only with route and reason. "
-            "Allowed routes: count, status, semantic, python. "
-            "Use python for calculations that need arbitrary dataframe logic, numeric column comparisons, "
-            "diffs, missing IDs, correlations, medians, anomalies, or multi-step transformations."
+def try_route(workspace, metadata, question, route_plan: RoutePlan, request_id, conversation_history):
+    attempts = []
+    last_result = None
+    for route in route_plan.ordered_routes():
+        result = run_route(workspace, metadata, question, route, route_plan, request_id, conversation_history)
+        status = result.pop("_routing_status", "ok")
+        detail = result.pop("_routing_detail", "")
+        attempts.append({"route": route, "status": status, "detail": detail})
+        if status == "ok":
+            result["route"] = route
+            debug = result.setdefault("debug", {})
+            debug["route_plan"] = {
+                "primary": route_plan.route,
+                "reason": route_plan.reason,
+                "confidence": route_plan.confidence,
+                "source": route_plan.source,
+                "candidates": list(route_plan.ordered_routes()),
+                "execution": route_plan.execution,
+            }
+            debug["route_attempts"] = attempts
+            return result
+        last_result = result
+        log.info(
+            "route_attempt_not_usable",
+            extra={"request_id": request_id, "route": route, "status": status, "detail": detail},
         )
-        user = f"Question:\n{question}\n\nWorkbook:\n{metadata_summary(metadata)}"
-        payload = parse_json_object(llm.generate(system, user, model=model, temperature=0.0))
-        planned = str(payload.get("route", "")).strip().lower()
-        if planned in ROUTES:
-            return {"route": planned, "reason": str(payload.get("reason") or "llm")}
+
+    debug = (last_result or {}).get("debug", {})
+    debug["route_plan"] = {
+        "primary": route_plan.route,
+        "reason": route_plan.reason,
+        "confidence": route_plan.confidence,
+        "source": route_plan.source,
+        "candidates": list(route_plan.ordered_routes()),
+        "execution": route_plan.execution,
+    }
+    debug["route_attempts"] = attempts
+    return {
+        "answer": "I could not produce a reliable answer from the active workspace data.",
+        "route": route_plan.route,
+        "sources": [],
+        "debug": debug,
+    }
+
+
+def run_route(workspace, metadata, question, route, route_plan, request_id, conversation_history):
+    try:
+        if route == "count":
+            context = count_context(workspace, metadata, question)
+            return answer_from_context(question, context, "count", conversation_history)
+        if route == "sql":
+            return sql_answer(workspace, metadata, question, request_id, conversation_history)
+        if route == "status":
+            context = status_context(workspace, metadata, question)
+            return answer_from_context(question, context, "status", conversation_history)
+        if route == "python":
+            result = python_answer(
+                workspace,
+                metadata,
+                question,
+                {"route": "python", "reason": route_plan.reason},
+                request_id=request_id,
+            )
+            if result.get("debug", {}).get("execution_status") != "ok":
+                result["_routing_status"] = "failed"
+                result["_routing_detail"] = result.get("debug", {}).get("stderr_preview") or "python_failed"
+            return result
+        if route == "semantic":
+            context = semantic_context(workspace, metadata, question)
+            return answer_from_context(question, context, "semantic", conversation_history)
+        if route == "hybrid":
+            context = hybrid_semantic_context(workspace, metadata, question, request_id)
+            return answer_from_context(question, context, "hybrid", conversation_history)
+        if route == "multi":
+            return multi_answer(workspace, metadata, question, route_plan, request_id, conversation_history)
+        return route_failed(route, f"unknown_route:{route}")
     except Exception as exc:
-        log.warning("route_planner_fallback", extra={"request_id": request_id, "error": str(exc)[:300]})
-    return {"route": route, "reason": "fallback"}
+        log.warning(
+            "route_attempt_failed",
+            extra={"request_id": request_id, "route": route, "error": str(exc)[:500]},
+        )
+        return route_failed(route, str(exc)[:500])
+
+
+def answer_from_context(question: str, context: dict, route: str, conversation_history: list[dict] | None = None) -> dict:
+    if not context.get("rows"):
+        return {
+            "answer": "",
+            "route": route,
+            "sources": context.get("sources", []),
+            "debug": context.get("debug", {}),
+            "_routing_status": "no_results",
+            "_routing_detail": "no_rows",
+        }
+    return llm_answer(question, context, route, conversation_history)
+
+
+def multi_answer(workspace, metadata, question, route_plan: RoutePlan, request_id, conversation_history):
+    subroutes = [route for route in route_plan.ordered_routes() if route != "multi"]
+    if not subroutes:
+        subroutes = ["sql", "semantic"]
+
+    attempts = []
+    results = []
+    for subroute in subroutes:
+        if subroute == "python" and results:
+            continue
+        result = run_route(workspace, metadata, question, subroute, route_plan, request_id, conversation_history)
+        status = result.pop("_routing_status", "ok")
+        detail = result.pop("_routing_detail", "")
+        attempts.append({"route": subroute, "status": status, "detail": detail})
+        if status != "ok":
+            continue
+        results.append(
+            {
+                "route": subroute,
+                "answer": result.get("answer", ""),
+                "sources": result.get("sources", []),
+                "debug": result.get("debug", {}),
+            }
+        )
+        if {"sql", "semantic"}.issubset({item["route"] for item in results}):
+            break
+
+    if not results:
+        return route_failed("multi", "no_subroute_results")
+
+    context = {
+        "kind": "multi",
+        "rows": [
+            {
+                "route": item["route"],
+                "answer": item["answer"],
+                "source_count": len(item["sources"]),
+            }
+            for item in results
+        ],
+        "sources": dedupe_sources(source for item in results for source in item["sources"]),
+        "debug": {
+            "multi_routes": [item["route"] for item in results],
+            "multi_attempts": attempts,
+            "subroute_debug": {item["route"]: item["debug"] for item in results},
+        },
+    }
+    return llm_answer(question, context, "multi", conversation_history)
+
+
+def route_failed(route: str, detail: str) -> dict:
+    return {
+        "answer": "",
+        "route": route,
+        "sources": [],
+        "debug": {"error": detail},
+        "_routing_status": "failed",
+        "_routing_detail": detail,
+    }
+
+
+def sql_answer(workspace: Workspace, metadata: dict, question: str, request_id: str, conversation_history: list[dict] | None) -> dict:
+    import duckdb
+
+    sql = generate_sql_query(question, metadata)
+    if not sql:
+        return route_failed("sql", "sql_generation_empty")
+    try:
+        sql = validate_select_sql(sql)
+    except ValueError as exc:
+        return route_failed("sql", str(exc))
+
+    conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
+    try:
+        log.info("sql_execution", extra={"request_id": request_id, "sql": sql[:2000]})
+        cursor = conn.execute(sql)
+        rows_raw = cursor.fetchmany(MAX_SQL_ROWS + 1)
+        columns = [col[0] for col in cursor.description or []]
+    except Exception as exc:
+        log.warning("sql_route_failed", extra={"request_id": request_id, "error": str(exc)[:500], "sql": sql[:1000]})
+        return route_failed("sql", str(exc)[:500])
+    finally:
+        conn.close()
+
+    truncated = len(rows_raw) > MAX_SQL_ROWS
+    rows_raw = rows_raw[:MAX_SQL_ROWS]
+    if not rows_raw:
+        return {
+            "answer": "",
+            "route": "sql",
+            "sources": [],
+            "debug": {"sql": sql, "rows": 0},
+            "_routing_status": "no_results",
+            "_routing_detail": "sql_returned_no_rows",
+        }
+
+    if len(rows_raw) == 1 and len(rows_raw[0]) == 1:
+        rows = [{"result": rows_raw[0][0]}]
+    else:
+        rows = [dict(zip(columns, row)) for row in rows_raw]
+
+    context = {
+        "kind": "sql",
+        "rows": rows,
+        "sources": [],
+        "debug": {"sql": sql, "rows": len(rows), "truncated": truncated},
+    }
+    return llm_answer(question, context, "sql", conversation_history)
+
+
+def validate_select_sql(sql: str) -> str:
+    cleaned = extract_fenced_code(sql) or sql
+    cleaned = cleaned.strip().rstrip(";").strip()
+    if not cleaned:
+        raise ValueError("sql_generation_empty")
+    if ";" in cleaned:
+        raise ValueError("sql_multiple_statements_not_allowed")
+    if not re.match(r"^(select|with)\b", cleaned, re.I):
+        raise ValueError("sql_must_be_select")
+    blocked = r"\b(insert|update|delete|drop|alter|create|attach|copy|pragma|call|install|load|export|import)\b"
+    if re.search(blocked, cleaned, re.I):
+        raise ValueError("sql_contains_blocked_keyword")
+    return cleaned
 
 
 def count_context(workspace: Workspace, metadata: dict, question: str) -> dict:
@@ -145,7 +386,6 @@ def status_context(workspace: Workspace, metadata: dict, question: str) -> dict:
                 FROM {quote_ident(table['table'])}
                 WHERE lower({quote_ident(id_col)}) = lower(?)
                    OR lower({quote_ident(id_col)}) LIKE lower(?)
-                LIMIT 10
                 """,
                 [token, f"%{token}%"],
             ).fetchall()
@@ -162,14 +402,82 @@ def status_context(workspace: Workspace, metadata: dict, question: str) -> dict:
                 for row_id, sheet, original_row_number, serial, status in result
             )
     conn.close()
-    return {"kind": "status", "rows": rows[:20], "sources": source_rows(rows[:20])}
+    return {"kind": "status", "rows": rows, "sources": source_rows(rows)}
 
 
-def semantic_context(workspace: Workspace, metadata: dict, question: str) -> dict:
+def hybrid_semantic_context(workspace: Workspace, metadata: dict, question: str, request_id: str = "") -> dict:
+    filter_sql = generate_hybrid_filter_sql(question, metadata)
+    if not filter_sql:
+        return {"kind": "hybrid", "rows": [], "sources": [], "debug": {"hybrid_filter": "empty"}}
+    try:
+        filter_sql = validate_select_sql(filter_sql)
+    except ValueError as exc:
+        return {
+            "kind": "hybrid",
+            "rows": [],
+            "sources": [],
+            "debug": {"hybrid_filter_sql": filter_sql, "error": str(exc)},
+        }
+
+    row_ids, truncated = execute_row_id_sql(workspace, filter_sql, request_id)
+    if not row_ids:
+        return {
+            "kind": "hybrid",
+            "rows": [],
+            "sources": [],
+            "debug": {"hybrid_filter_sql": filter_sql, "filtered_rows": 0, "truncated": truncated},
+        }
+
+    context = semantic_context(workspace, metadata, question, candidate_row_ids=row_ids)
+    context["kind"] = "hybrid"
+    debug = context.setdefault("debug", {})
+    debug.update(
+        {
+            "hybrid_filter_sql": filter_sql,
+            "filtered_rows": len(row_ids),
+            "filter_truncated": truncated,
+        }
+    )
+    return context
+
+
+def execute_row_id_sql(workspace: Workspace, sql: str, request_id: str = "") -> tuple[list[str], bool]:
+    import duckdb
+
+    conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
+    try:
+        log.info("hybrid_filter_sql_execution", extra={"request_id": request_id, "sql": sql[:2000]})
+        cursor = conn.execute(sql)
+        rows = cursor.fetchmany(MAX_HYBRID_FILTER_ROWS + 1)
+        columns = [col[0] for col in cursor.description or []]
+    finally:
+        conn.close()
+
+    if not columns:
+        return [], False
+    row_id_index = next((index for index, column in enumerate(columns) if column.lower() == "row_id"), 0)
+    truncated = len(rows) > MAX_HYBRID_FILTER_ROWS
+    row_ids = []
+    seen = set()
+    for row in rows[:MAX_HYBRID_FILTER_ROWS]:
+        row_id = str(row[row_id_index] or "").strip()
+        if row_id and row_id not in seen:
+            seen.add(row_id)
+            row_ids.append(row_id)
+    return row_ids, truncated
+
+
+
+def semantic_context(
+    workspace: Workspace,
+    metadata: dict,
+    question: str,
+    candidate_row_ids: list[str] | set[str] | tuple[str, ...] | None = None,
+) -> dict:
     settings = load_settings()
     embedder, _model = get_embedding_provider(settings)
     query_embedding = embedder.encode_query(question)
-    hits = query_rows(workspace.chroma_dir, workspace.chroma_collection, query_embedding, top_k=20)
+    hits = query_rows(workspace.chroma_dir, workspace.chroma_collection, query_embedding, top_k=20, row_ids=candidate_row_ids)
     rows = fetch_rows(workspace, metadata, [hit["id"] for hit in hits])
     if wants_open(question):
         rows = [row for row in rows if row_has_open_status(row)]
@@ -179,31 +487,88 @@ def semantic_context(workspace: Workspace, metadata: dict, question: str) -> dic
         "kind": "semantic",
         "rows": rows[:12],
         "sources": source_rows(rows[:12], hit_by_id),
-        "debug": {"semantic_hits": len(hits), "returned_rows": len(rows[:12])},
+        "debug": {
+            "semantic_hits": len(hits),
+            "returned_rows": len(rows[:12]),
+            "candidate_rows": len(candidate_row_ids or []),
+        },
     }
 
 
 def python_answer(workspace: Workspace, metadata: dict, question: str, route_plan: dict, request_id: str = "") -> dict:
-    try:
-        code = generate_python_code(question, metadata)
-        result = run_python_analysis(workspace, metadata, code, request_id=request_id)
-    except Exception as exc:
-        log.warning("python_analysis_failed", extra={"request_id": request_id, "error": str(exc)[:300]})
-        return {
-            "answer": f"I could not run the Python analysis: {exc}",
-            "route": "python",
-            "sources": [],
-            "debug": {"route_reason": route_plan.get("reason"), "execution_status": "failed"},
-        }
-
+    max_attempts = 2
+    last_error = None
+    
+    for attempt in range(max_attempts):
+        try:
+            code = generate_python_code(question, metadata, last_error)
+            log.info(
+                "python_code_generated",
+                extra={
+                    "request_id": request_id,
+                    "workspace_id": workspace.workspace_id,
+                    "question": question[:500],
+                    "code_length": len(code),
+                    "code_preview": code[:1000],
+                    "attempt": attempt + 1,
+                },
+            )
+            result = run_python_analysis(workspace, metadata, code, request_id=request_id)
+            
+            if result.get("ok"):
+                break
+            
+            error_text = str(result.get("error") or result.get("stderr") or "")
+            if attempt < max_attempts - 1:
+                last_error = error_text[:1500]
+                log.warning(
+                    "python_execution_retry",
+                    extra={
+                        "request_id": request_id,
+                        "error": last_error[:500],
+                        "attempt": attempt + 1,
+                    },
+                )
+                continue
+                
+        except Exception as exc:
+            last_error = str(exc)[:1500]
+            log.warning(
+                "python_code_generation_failed",
+                extra={
+                    "request_id": request_id,
+                    "error": last_error[:500],
+                    "attempt": attempt + 1,
+                },
+            )
+            if attempt >= max_attempts - 1:
+                return {
+                    "answer": f"I could not generate Python code: {exc}",
+                    "route": "python",
+                    "sources": [],
+                    "debug": {"route_reason": route_plan.get("reason"), "execution_status": "failed"},
+                }
+    
     debug = {
         "route_reason": route_plan.get("reason"),
         "execution_status": "ok" if result.get("ok") else "failed",
         "stdout_preview": str(result.get("stdout") or "")[:1000],
         "stderr_preview": str(result.get("stderr") or result.get("error") or "")[:1000],
         "elapsed_ms": result.get("elapsed_ms"),
+        "attempts": attempt + 1,
     }
     if not result.get("ok"):
+        log.error(
+            "python_execution_failed",
+            extra={
+                "request_id": request_id,
+                "workspace_id": workspace.workspace_id,
+                "question": question[:500],
+                "error": str(result.get("error") or result.get("stderr") or "")[:1000],
+                "stdout": str(result.get("stdout") or "")[:1000],
+                "stderr": str(result.get("stderr") or "")[:1000],
+            },
+        )
         return {
             "answer": "The Python analysis failed before producing a reliable answer.",
             "route": "python",
@@ -213,20 +578,42 @@ def python_answer(workspace: Workspace, metadata: dict, question: str, route_pla
     return {"answer": final_python_answer(question, result), "route": "python", "sources": [], "debug": debug}
 
 
-def generate_python_code(question: str, metadata: dict) -> str:
+def generate_python_code(question: str, metadata: dict, previous_error: str | None = None) -> str:
     settings = load_settings()
     llm, model = get_llm_provider(settings)
     system = (
         "You write Python for a sandboxed spreadsheet analysis. "
         "Return JSON only: {\"code\": \"...\"}. "
         "The code may use pandas and the standard library. "
-        "Read /input/manifest.json, then read CSV files from /input using csv filenames in the manifest. "
+        "CRITICAL: Read /input/manifest.json first to get the list of CSV files. "
+        "Then read data using pd.read_csv('/input/<filename>', encoding='utf-8') where filename comes from manifest['tables'][i]['csv']. "
+        "If utf-8 fails, try encoding='latin-1'. "
+        "CRITICAL: Do NOT use on_error, on_bad_lines, or any other unsupported parameters. "
+        "NEVER use pd.read_excel or read any .xlsx files - only CSV files exist in /input. "
+        "CRITICAL: When referencing column names in Python strings, always escape apostrophes: use \"column['name']\" or double quotes \"column'name\". "
+        "CRITICAL: NEVER limit the number of rows in your results. Do NOT use .head(), .tail(), or LIMIT. "
+        "Process ALL rows from the CSV file. If counting, return the total count. If filtering, return all matching rows. "
+        "Examples:\n"
+        "  df[df['PRIORITA\\''] == 'CRITICAL']  # apostrophe in column name - returns ALL matching rows\n"
+        "  df[df['LINEA PRODOTTO'] == 'Robot']  # space in column name - returns ALL matching rows\n"
+        "  df[(df['PRIORITA\\''] == 'CRITICAL') & (df['LINEA PRODOTTO'] == 'Robot')].shape[0]  # combined filter - count ALL\n"
+        "  df.groupby('PRIORITA\\'').size().to_dict()  # group by - ALL groups\n"
+        "Example pattern:\n"
+        "  import json, pandas as pd\n"
+        "  with open('/input/manifest.json') as f: manifest = json.load(f)\n"
+        "  csv_file = f\"/input/{manifest['tables'][0]['csv']}\"\n"
+        "  try: df = pd.read_csv(csv_file, encoding='utf-8')\n"
+        "  except: df = pd.read_csv(csv_file, encoding='latin-1')\n"
+        "  filtered = df[(df['PRIORITA\\''] == 'CRITICAL') & (df['LINEA PRODOTTO'] == 'Robot')]\n"
+        "  answer = filtered.shape[0]  # count ALL matching rows, not just first 6\n"
         "Use the manifest dataset filenames when the question compares multiple uploaded files. "
         "Do not access network resources. Do not read paths outside /input or write outside /output. "
         "Set a variable named answer to a concise JSON-serializable result. "
         "Do not print prose as the final answer; store the final result in answer."
     )
     user = f"Question:\n{question}\n\nWorkbook:\n{metadata_summary(metadata)}"
+    if previous_error:
+        user += f"\n\nPREVIOUS ERROR - Fix this syntax/runtime error:\n{previous_error}"
     raw = llm.generate(system, user, model=model, temperature=0.0)
     try:
         payload = parse_json_object(raw)
@@ -238,7 +625,7 @@ def generate_python_code(question: str, metadata: dict) -> str:
     if not code:
         raise ValueError("The model did not return Python code")
     if len(code) > 20000:
-        raise ValueError("Generated Python code is too large")
+        raise ValueError("Generated code is too large")
     return code
 
 
@@ -252,13 +639,13 @@ def final_python_answer(question: str, result: dict) -> str:
             "Be concise and mention calculation limits if the result says so."
         )
         user = f"Question:\n{question}\n\nPython result:\n{compact_python_result(result)}"
-        return llm.generate(system, user, model=model, temperature=settings["chat"].get("temperature", 0.2))
+        return llm.generate(system, user, model=model, temperature=settings.get("chat", {}).get("temperature", 0.2))
     except Exception as exc:
         log.warning("python_llm_fallback", extra={"error": str(exc)[:300]})
         return fallback_python_answer(result)
 
 
-def llm_answer(question: str, context: dict, route: str) -> dict:
+def llm_answer(question: str, context: dict, route: str, conversation_history: list[dict] | None = None) -> dict:
     settings = load_settings()
     try:
         llm, model = get_llm_provider(settings)
@@ -269,11 +656,31 @@ def llm_answer(question: str, context: dict, route: str) -> dict:
             "If evidence is weak, say so."
         )
         user = f"Question:\n{question}\n\nRoute: {route}\n\nContext:\n{compact_context(context)}"
-        answer = llm.generate(system, user, model=model, temperature=settings["chat"].get("temperature", 0.2))
+        messages = [{"role": "system", "content": system}]
+        if conversation_history:
+            messages.extend(conversation_history[-MAX_LLM_MESSAGES:])
+        messages.append({"role": "user", "content": user})
+        answer = generate_with_optional_messages(
+            llm,
+            system,
+            user,
+            model=model,
+            temperature=settings.get("chat", {}).get("temperature", 0.2),
+            messages=messages,
+        )
     except Exception as exc:
         log.warning("llm_fallback", extra={"error": str(exc)[:300]})
         answer = fallback_answer(context)
     return {"answer": answer, "route": route, "sources": context.get("sources", []), "debug": context.get("debug", {})}
+
+
+def generate_with_optional_messages(llm, system: str, user: str, *, model: str, temperature: float, messages: list[dict]) -> str:
+    try:
+        return llm.generate(system, user, model=model, temperature=temperature, messages=messages)
+    except TypeError as exc:
+        if "messages" not in str(exc):
+            raise
+        return llm.generate(system, user, model=model, temperature=temperature)
 
 
 def compact_context(context: dict) -> str:
@@ -342,7 +749,7 @@ def parse_json_object(text: str) -> dict:
 
 
 def extract_fenced_code(text: str) -> str:
-    match = re.search(r"```(?:python)?\s*(.*?)```", text, re.S)
+    match = re.search(r"```(?:[A-Za-z0-9_-]+)?\s*(.*?)```", text, re.S)
     return match.group(1).strip() if match else ""
 
 
@@ -365,10 +772,6 @@ def find_column(columns: list[str], hints: set[str]) -> str | None:
         if any(hint in low for hint in hints):
             return column
     return None
-
-
-def has_any_word(text: str, words: set[str]) -> bool:
-    return any(re.search(r"\b" + re.escape(word) + r"\b", text) for word in words)
 
 
 def query_tokens(question: str) -> list[str]:
@@ -403,3 +806,20 @@ def source_rows(rows: list[dict], hits: dict | None = None) -> list[dict]:
             }
         )
     return sources
+
+
+def dedupe_sources(sources) -> list[dict]:
+    deduped = []
+    seen = set()
+    for source in sources:
+        key = (
+            source.get("row_id"),
+            source.get("file"),
+            source.get("sheet"),
+            source.get("row"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(source)
+    return deduped

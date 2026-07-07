@@ -174,6 +174,8 @@ def create_app() -> Flask:
                 replace_existing=bool(payload.get("replace_existing")),
                 request_id=request.request_id,
             )
+            from app.session import clear_history
+            clear_history(user["id"])
             return jsonify(active=metadata)
         except Exception as exc:
             log.exception("workbook_import_failed", extra={"request_id": request.request_id, "user_id": user["id"]})
@@ -201,7 +203,13 @@ def create_app() -> Flask:
             return jsonify(error="Question is too short"), 400
         workspace = workspace_for_user(current_user()["id"])
         try:
-            return jsonify(answer_question(workspace, question, request_id=request.request_id))
+            from app.session import get_history, save_history
+            user_id = current_user()["id"]
+            history = get_history(user_id)
+            result = answer_question(workspace, question, request_id=request.request_id, conversation_history=history)
+            answer_text = result.get("answer", "")
+            save_history(user_id, history, message={"role": "user", "content": question[:500]}, answer=answer_text)
+            return jsonify(result)
         except Exception as exc:
             log.exception("query_failed", extra={"request_id": request.request_id, "user_id": current_user()["id"]})
             return jsonify(error=str(exc)), 500

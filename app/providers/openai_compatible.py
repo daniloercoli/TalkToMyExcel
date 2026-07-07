@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import os
 
+import httpx
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 from .base import EmbeddingProvider, LLMProvider
 
 
@@ -30,16 +35,29 @@ class OpenAICompatibleLLM(LLMProvider):
         from openai import OpenAI
 
         self.config = config
-        self.client = OpenAI(api_key=client_key(config), base_url=base_url(config))
+        self.client = OpenAI(
+            api_key=client_key(config),
+            base_url=base_url(config),
+            http_client=httpx.Client(verify=False),
+        )
 
-    def generate(self, system: str, user: str, model: str, temperature: float = 0.2) -> str:
+    def generate(
+        self,
+        system: str,
+        user: str,
+        model: str,
+        temperature: float = 0.2,
+        messages: list[dict] | None = None,
+    ) -> str:
+        if messages is None:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ]
         response = self.client.chat.completions.create(
             model=model,
             temperature=temperature,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
+            messages=messages,
         )
         return response.choices[0].message.content or ""
 
@@ -53,7 +71,11 @@ class OpenAICompatibleEmbedding(EmbeddingProvider):
         from openai import OpenAI
 
         self.model = model
-        self.client = OpenAI(api_key=client_key(config), base_url=base_url(config))
+        self.client = OpenAI(
+            api_key=client_key(config),
+            base_url=base_url(config),
+            http_client=httpx.Client(verify=False),
+        )
 
     def encode_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:

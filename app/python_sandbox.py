@@ -32,7 +32,12 @@ def run_python_analysis(workspace: Workspace, metadata: dict, code: str, request
 
         log.info(
             "python_sandbox_start",
-            extra={"request_id": request_id, "workspace_id": workspace.workspace_id, "tables": len(manifest["tables"])},
+            extra={
+                "request_id": request_id,
+                "workspace_id": workspace.workspace_id,
+                "tables": len(manifest["tables"]),
+                "manifest": json.dumps(manifest, ensure_ascii=False)[:3000],
+            },
         )
         client = docker.from_env()
         container = None

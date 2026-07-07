@@ -64,7 +64,9 @@ def setup_logger(name: str = "talktomyexcel") -> logging.Logger:
     try:
         log_dir = Path(os.getenv("LOG_DIR", "app/logs"))
         log_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = RotatingFileHandler(log_dir / "talktomyexcel.log", maxBytes=10_000_000, backupCount=5)
+        file_handler = RotatingFileHandler(
+            log_dir / "talktomyexcel.log", maxBytes=10_000_000, backupCount=5, encoding="utf-8"
+        )
         file_handler.setLevel(level)
         if os.getenv("LOG_FORMAT", "json").lower() == "json":
             file_handler.setFormatter(JsonFormatter())

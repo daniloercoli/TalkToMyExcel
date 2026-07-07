@@ -5,7 +5,14 @@ from abc import ABC, abstractmethod
 
 class LLMProvider(ABC):
     @abstractmethod
-    def generate(self, system: str, user: str, model: str, temperature: float = 0.2) -> str:
+    def generate(
+        self,
+        system: str,
+        user: str,
+        model: str,
+        temperature: float = 0.2,
+        messages: list[dict] | None = None,
+    ) -> str:
         raise NotImplementedError
 
 

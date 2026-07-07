@@ -41,4 +41,6 @@ Removes one imported dataset from the current user's workspace and rebuilds the 
 
 Returns an answer, route, sources, and compact debug metadata.
 
-`route` can be `count`, `status`, `semantic`, `python`, or `no_dataset`.
+`route` can be `count`, `status`, `sql`, `semantic`, `hybrid`, `multi`, `python`, or `no_dataset`.
+
+When debug metadata is present, `debug.route_plan` includes the primary route, ordered candidates, strategy source, confidence, and execution mode. `multi` uses candidates as subroutes; other routes use candidates as fallbacks.

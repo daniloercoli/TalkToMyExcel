@@ -1,5 +1,5 @@
 from app import query_engine
-from app.query_engine import classify, query_tokens
+from app.query_engine import classify, query_tokens, validate_select_sql
 from app.workbook import table_name
 
 
@@ -31,3 +31,16 @@ def test_plan_route_can_promote_ambiguous_questions_to_python(monkeypatch):
     plan = query_engine.plan_route("Find records that require a multi-step calculation", {"tables": []})
 
     assert plan["route"] == "python"
+
+
+def test_validate_select_sql_accepts_read_only_fenced_sql():
+    assert validate_select_sql("```sql\nSELECT count(*) FROM \"cases\";\n```") == 'SELECT count(*) FROM "cases"'
+
+
+def test_validate_select_sql_blocks_mutating_sql():
+    try:
+        validate_select_sql('DROP TABLE "cases"')
+    except ValueError as exc:
+        assert str(exc) == "sql_must_be_select"
+    else:
+        raise AssertionError("DROP TABLE should not be accepted")

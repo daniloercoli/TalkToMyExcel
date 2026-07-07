@@ -1,5 +1,13 @@
 let staging = null;
 
+/* ponytail: marked/DOMPurify from CDN; no local dependency */
+const parseMd = (text) =>
+  window.marked && window.DOMPurify
+    ? DOMPurify.sanitize(window.marked.parse(text || ""), { ADD_ATTR: ["target"] })
+    : escapeHtml(text || "");
+
+marked?.use({ breaks: true, gfm: true, headerIds: false, mangle: false });
+
 const uploadForm = document.getElementById("uploadForm");
 const fileInput = document.getElementById("fileInput");
 const fileName = document.getElementById("fileName");
@@ -66,27 +74,62 @@ document.querySelectorAll("[data-prompt]").forEach((button) => {
   });
 });
 
+questionInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    chatForm.dispatchEvent(new Event("submit", {cancelable: true, bubbles: true}));
+  }
+});
+
+questionInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    chatForm.dispatchEvent(new Event("submit", {cancelable: true, bubbles: true}));
+  }
+});
+
+questionInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    chatForm.dispatchEvent(new Event("submit", {cancelable: true, bubbles: true}));
+  }
+});
+
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const question = questionInput.value.trim();
   if (!question) return;
+  sendQuestion(question);
+});
+
+questionInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    chatForm.dispatchEvent(new Event("submit", {cancelable: true, bubbles: true}));
+  }
+});
+
+function sendQuestion(question) {
   addMessage(question, "user");
   questionInput.value = "";
   const bot = addMessage("Working...", "bot");
-  try {
-    const response = await fetch("/api/query", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({question}),
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Query failed");
-    bot.textContent = payload.answer;
-    if (payload.sources?.length) bot.appendChild(renderSources(payload.sources));
-  } catch (error) {
-    bot.textContent = error.message;
-  }
-});
+  (async () => {
+    try {
+      const response = await fetch("/api/query", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({question}),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Query failed");
+      bot.innerHTML = "";
+      bot.innerHTML = parseMd(payload.answer);
+      if (payload.sources?.length) bot.appendChild(renderSources(payload.sources));
+    } catch (error) {
+      bot.textContent = error.message;
+    }
+  })();
+}
 
 function renderProfile(profile) {
   profilePanel.hidden = false;
@@ -162,7 +205,11 @@ function addMessage(text, kind) {
   emptyChat?.remove();
   const div = document.createElement("div");
   div.className = `message ${kind}`;
-  div.textContent = text;
+  if (kind === "bot") {
+    div.innerHTML = parseMd(text);
+  } else {
+    div.textContent = text;
+  }
   messages.appendChild(div);
   messages.scrollTop = messages.scrollHeight;
   return div;

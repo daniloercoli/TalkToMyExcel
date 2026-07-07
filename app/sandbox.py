@@ -41,7 +41,10 @@ def save_upload(file_storage, workspace_upload_dir: Path) -> tuple[str, Path]:
 
 
 def profile_in_sandbox(input_path: Path, output_dir: Path, request_id: str = "") -> dict:
+    input_path = input_path.resolve()
+    output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.chmod(0o777)
     result_path = output_dir / "result.json"
     client = docker.from_env()
     log.info(
@@ -69,6 +72,12 @@ def profile_in_sandbox(input_path: Path, output_dir: Path, request_id: str = "")
         wait = container.wait(timeout=Config.SANDBOX_TIMEOUT)
         if int(wait.get("StatusCode", 1)) != 0:
             logs = container.logs(stdout=True, stderr=True).decode(errors="replace")
+            if result_path.exists():
+                try:
+                    result = json.loads(result_path.read_text(encoding="utf-8"))
+                    raise SandboxError(result.get("error") or logs.strip() or "Sandbox failed")
+                except json.JSONDecodeError:
+                    pass
             raise SandboxError(logs.strip() or "Sandbox failed")
     except docker.errors.ImageNotFound as exc:
         raise SandboxError(

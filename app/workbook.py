@@ -6,6 +6,7 @@ import shutil
 import uuid
 from pathlib import Path
 
+from app.config import Config
 from app.logging_config import log
 from app.providers.factory import get_embedding_provider, load_settings
 from app.stores import Workspace
@@ -142,12 +143,12 @@ def remove_workbook_dataset(workspace: Workspace, workbook_id: str, request_id: 
 def rebuild_semantic_index(workspace: Workspace, metadata: dict, request_id: str = "") -> None:
     import duckdb
 
-    provider, model = get_embedding_provider(load_settings())
     reset_collection(workspace.chroma_dir, workspace.chroma_collection)
     if not metadata.get("tables"):
         return
     conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
     rows_to_add: list[dict] = []
+    chunk_size, chunk_overlap = semantic_chunk_config()
     for table in metadata["tables"]:
         semantic_columns = table.get("semantic_columns") or []
         if not semantic_columns:
@@ -164,36 +165,76 @@ def rebuild_semantic_index(workspace: Workspace, metadata: dict, request_id: str
             semantic_text = "\n".join(parts).strip()
             if not semantic_text:
                 continue
-            rows_to_add.append(
-                {
-                    "id": str(row_id),
-                    "text": semantic_text,
-                    "metadata": {
-                        "row_id": str(row_id),
-                        "workbook_id": table.get("workbook_id"),
-                        "filename": table.get("filename"),
-                        "sheet": str(sheet_name),
-                        "table": table["table"],
-                        "original_row_number": int(original_row_number),
-                    },
-                }
-            )
+            chunks = chunk_semantic_text(semantic_text, chunk_size=chunk_size, overlap=chunk_overlap)
+            for chunk_index, chunk_text in enumerate(chunks):
+                row_id_text = str(row_id)
+                chunk_id = row_id_text if len(chunks) == 1 else f"{row_id_text}::chunk_{chunk_index:04d}"
+                rows_to_add.append(
+                    {
+                        "id": chunk_id,
+                        "text": chunk_text,
+                        "metadata": {
+                            "row_id": str(row_id),
+                            "workbook_id": table.get("workbook_id"),
+                            "filename": table.get("filename"),
+                            "sheet": str(sheet_name),
+                            "table": table["table"],
+                            "original_row_number": int(original_row_number),
+                            "chunk_index": chunk_index,
+                            "chunk_count": len(chunks),
+                        },
+                    }
+                )
     conn.close()
 
-    batch_size = 64
-    for start in range(0, len(rows_to_add), batch_size):
-        batch = rows_to_add[start : start + batch_size]
-        embeddings = provider.encode_documents([row["text"] for row in batch])
-        add_rows(workspace.chroma_dir, workspace.chroma_collection, batch, embeddings)
+    model = ""
+    if rows_to_add:
+        provider, model = get_embedding_provider(load_settings())
+        batch_size = 64
+        for start in range(0, len(rows_to_add), batch_size):
+            batch = rows_to_add[start : start + batch_size]
+            embeddings = provider.encode_documents([row["text"] for row in batch])
+            add_rows(workspace.chroma_dir, workspace.chroma_collection, batch, embeddings)
     log.info(
         "semantic_index_rebuilt",
         extra={
             "request_id": request_id,
             "workspace_id": workspace.workspace_id,
-            "rows": len(rows_to_add),
+            "documents": len(rows_to_add),
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
             "embedding_model": model,
         },
     )
+
+
+def semantic_chunk_config() -> tuple[int, int]:
+    chunk_size = max(int(getattr(Config, "SEMANTIC_CHUNK_SIZE", 0) or 0), 0)
+    overlap = max(int(getattr(Config, "SEMANTIC_CHUNK_OVERLAP", 0) or 0), 0)
+    if chunk_size <= 0:
+        return 0, 0
+    if overlap >= chunk_size:
+        overlap = max(chunk_size - 1, 0)
+    return chunk_size, overlap
+
+
+def chunk_semantic_text(text: str, *, chunk_size: int, overlap: int) -> list[str]:
+    text = text.strip()
+    if not text:
+        return []
+    if chunk_size <= 0 or len(text) <= chunk_size:
+        return [text]
+
+    chunks = []
+    start = 0
+    step = max(chunk_size - overlap, 1)
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        chunks.append(text[start:end].strip())
+        if end >= len(text):
+            break
+        start += step
+    return [chunk for chunk in chunks if chunk]
 
 
 def fetch_rows(workspace: Workspace, metadata: dict, row_ids: list[str]) -> list[dict]:

@@ -92,17 +92,21 @@ Local embeddings are supported through `sentence-transformers`. They keep semant
 
 ## Query Flow
 
-The query engine uses simple routing:
+The query engine uses routed spreadsheet tools:
 
 - Exact status/serial questions use DuckDB.
-- Count questions use DuckDB.
+- Broad count questions use deterministic DuckDB summaries.
+- Exact filters, dates, aggregates, and explicit group-by questions use read-only SQL.
 - Similar-problem questions use embeddings.
 - Hybrid questions filter structured rows and then apply semantic search.
+- Multi-intent questions can combine SQL and semantic evidence before final synthesis.
 - Advanced numeric, diff, missing-ID, and multi-step calculation questions can use generated Python in a short-lived Docker sandbox.
 
 The LLM receives compact, cited rows. It is not used as the database.
 
 For Python analysis, the application exports the active DuckDB workspace tables to temporary CSV files, mounts them read-only at `/input`, runs generated Python with network disabled, and reads `/output/result.json`. The manifest includes dataset filenames so generated code can compare files. The container is removed after the run.
+
+See [routing.md](routing.md) for route details and [evaluation.md](evaluation.md) for the private golden Q/A workflow.
 
 ## Logs
 
