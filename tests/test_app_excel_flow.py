@@ -313,6 +313,14 @@ def test_excel_upload_import_and_query_routes(client_env):
     assert "MX-1001" in comparison["answer"]
     assert "MX-1004" in comparison["answer"]
 
+    workspace_upload_dir = Config.UPLOAD_DIR / "workspaces" / "admin-example-com"
+    workbook_dir = Config.DATA_DIR / "workspaces" / "admin-example-com" / "workbook"
+    xlsx_staging_dir = workspace_upload_dir / "staging" / staging_payload["staging_id"]
+    csv_staging_dir = workspace_upload_dir / "staging" / replacement_payload["staging_id"]
+    assert (xlsx_staging_dir / "after_sales_cases.xlsx").exists()
+    assert (csv_staging_dir / "q2_cases.csv").exists()
+    assert (csv_staging_dir / "prepared" / "sheet_1.csv").exists()
+
     csv_dataset_id = next(dataset["id"] for dataset in appended_active["datasets"] if dataset["filename"] == "q2_cases.csv")
     deleted = client.delete(f"/api/workbooks/{csv_dataset_id}")
     assert deleted.status_code == 200
@@ -320,6 +328,24 @@ def test_excel_upload_import_and_query_routes(client_env):
     assert [dataset["filename"] for dataset in after_delete["datasets"]] == ["after_sales_cases.xlsx"]
     assert {table["sheet"] for table in after_delete["tables"]} == {"Cases", "Expected"}
     assert len(client_env["indexed_rows"]) == 4
+    assert all(row["metadata"]["filename"] == "after_sales_cases.xlsx" for row in client_env["indexed_rows"])
+    assert xlsx_staging_dir.exists()
+    assert not csv_staging_dir.exists()
+
+    import duckdb
+
+    conn = duckdb.connect(str(workbook_dir / "data.duckdb"), read_only=True)
+    tables_after_csv_delete = {row[0] for row in conn.execute("SHOW TABLES").fetchall()}
+    conn.close()
+    assert tables_after_csv_delete == {table["table"] for table in after_delete["tables"]}
+
+    xlsx_dataset_id = after_delete["datasets"][0]["id"]
+    deleted_last = client.delete(f"/api/workbooks/{xlsx_dataset_id}")
+    assert deleted_last.status_code == 200
+    assert deleted_last.get_json()["active"] is None
+    assert client_env["indexed_rows"] == []
+    assert not xlsx_staging_dir.exists()
+    assert not workbook_dir.exists()
 
 
 def ask(client, question):

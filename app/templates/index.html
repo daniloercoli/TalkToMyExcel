@@ -44,10 +44,46 @@
       <button class="primary" type="submit">Upload</button>
     </form>
 
+    <dialog id="uploadDialog" class="upload-dialog" aria-labelledby="uploadDialogTitle" aria-describedby="uploadDialogText">
+      <div class="upload-dialog-body">
+        <div class="data-loader" aria-hidden="true">
+          <div class="data-sheet">
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+          </div>
+          <div class="data-flow">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="data-core">
+            <span></span>
+          </div>
+        </div>
+        <div>
+          <p id="uploadDialogEyebrow" class="eyebrow">Upload in progress</p>
+          <h2 id="uploadDialogTitle">Preparing your workbook</h2>
+          <p id="uploadDialogText" class="upload-dialog-text" role="status" aria-live="polite">We are reading the file and getting the data ready for analysis.</p>
+          <p id="uploadDialogFile" class="upload-dialog-file" aria-live="polite"></p>
+          <div class="upload-steps" aria-hidden="true">
+            <span data-upload-step="0" class="active">Uploading file</span>
+            <span data-upload-step="1">Scanning sheets</span>
+            <span data-upload-step="2">Preparing preview</span>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
     <div id="profilePanel" class="profile-panel" hidden>
       <div class="section-head compact-head">
         <h2>Import setup</h2>
         <span class="status-pill">Staged</span>
+      </div>
+      <div class="semantic-help">
+        <strong>Choose columns for semantic search</strong>
+        <p>Select the text columns that describe what happened, such as descriptions, notes, comments, symptoms, or solutions. These columns help the app find similar rows when you ask natural-language questions.</p>
+        <small>Leave IDs, dates, status fields, and numeric columns unchecked unless their text is useful for similarity.</small>
       </div>
       <div id="sheetList"></div>
       <button class="primary" id="importButton" type="button">Import selected data</button>
@@ -60,13 +96,17 @@
         <p class="eyebrow">Analysis</p>
         <h2>Ask your workbook</h2>
       </div>
-      <span id="chatStatus" class="status-pill">
-        {% if active %}
-          {{ active.datasets|length }} {{ "dataset" if active.datasets|length == 1 else "datasets" }}
-        {% else %}
-          No dataset
-        {% endif %}
-      </span>
+      <div class="chat-header-right">
+        <span id="chatStatus" class="status-pill">
+          {% if active %}
+            {{ active.datasets|length }} {{ "dataset" if active.datasets|length == 1 else "datasets" }}
+          {% else %}
+            No dataset
+          {% endif %}
+        </span>
+        <span id="contextUsage" class="status-pill context-pill" title="Estimated LLM payload">0%</span>
+        <button type="button" id="clearSession" class="clear-btn" title="Clear conversation context">✕</button>
+      </div>
     </div>
     <div id="messages" class="messages">
       <div id="emptyChat" class="empty-chat">

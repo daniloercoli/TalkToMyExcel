@@ -129,9 +129,11 @@ def remove_workbook_dataset(workspace: Workspace, workbook_id: str, request_id: 
         workspace.metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
         rebuild_semantic_index(workspace, metadata, request_id=request_id)
     else:
-        if workspace.metadata_path.exists():
-            workspace.metadata_path.unlink()
         reset_collection(workspace.chroma_dir, workspace.chroma_collection)
+        if workspace.workbook_dir.exists():
+            shutil.rmtree(workspace.workbook_dir)
+
+    remove_staging_files(workspace, dataset)
 
     log.info(
         "workbook_removed",
@@ -206,6 +208,22 @@ def rebuild_semantic_index(workspace: Workspace, metadata: dict, request_id: str
             "embedding_model": model,
         },
     )
+
+
+def remove_staging_files(workspace: Workspace, dataset: dict) -> None:
+    staging_id = dataset.get("staging_id")
+    if not staging_id:
+        return
+    staging_dir = workspace.staging_dir / str(staging_id)
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+
+
+def reset_all_workspace_data() -> None:
+    for path in (Config.DATA_DIR / "workspaces", Config.UPLOAD_DIR / "workspaces", Config.DATA_DIR / "sessions"):
+        if path.exists():
+            shutil.rmtree(path)
+        path.mkdir(parents=True, exist_ok=True)
 
 
 def semantic_chunk_config() -> tuple[int, int]:

@@ -68,6 +68,44 @@ def test_demo_start_creates_logged_in_temporary_user(demo_app):
     assert settings.status_code == 403
 
 
+def test_admin_can_reset_workspace_data_after_confirmation(demo_app):
+    client = demo_app.test_client()
+    login = client.post("/login", data={"email": "admin@example.com", "password": "change-me-now"})
+    assert login.status_code == 302
+
+    settings = client.get("/settings")
+    assert settings.status_code == 200
+    assert b"Reset all workspace data" in settings.data
+
+    metadata = Config.DATA_DIR / "workspaces" / "admin-example-com" / "workbook" / "metadata.json"
+    upload = Config.UPLOAD_DIR / "workspaces" / "admin-example-com" / "staging" / "abc" / "file.csv"
+    history = Config.DATA_DIR / "sessions" / "admin-example-com.json"
+    for path in (metadata, upload, history):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("data", encoding="utf-8")
+
+    no_confirm = client.post("/settings/reset-data")
+    assert no_confirm.status_code == 400
+    assert metadata.exists()
+    assert upload.exists()
+    assert history.exists()
+
+    reset = client.post("/settings/reset-data", data={"confirm": "RESET"})
+    assert reset.status_code == 302
+    assert reset.headers["Location"].endswith("/settings?reset=1")
+    assert not metadata.exists()
+    assert not upload.exists()
+    assert not history.exists()
+    assert (Config.DATA_DIR / "workspaces").exists()
+    assert (Config.UPLOAD_DIR / "workspaces").exists()
+    assert (Config.DATA_DIR / "sessions").exists()
+    assert Config.USERS_FILE.exists()
+    assert Config.SETTINGS_FILE.exists()
+
+    done = client.get("/settings?reset=1")
+    assert b"Workspace data reset completed." in done.data
+
+
 def test_demo_users_are_isolated(demo_app):
     first = demo_app.test_client()
     second = demo_app.test_client()

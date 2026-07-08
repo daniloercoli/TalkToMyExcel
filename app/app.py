@@ -12,7 +12,13 @@ from app.providers.factory import ProviderCatalog, load_settings, save_settings
 from app.query_engine import answer_question
 from app.sandbox import SandboxError, profile_in_sandbox, save_upload
 from app.stores import UserStore, workspace_for_user
-from app.workbook import active_workbook, remove_workbook_dataset, replace_workbook, write_staging_manifest
+from app.workbook import (
+    active_workbook,
+    remove_workbook_dataset,
+    replace_workbook,
+    reset_all_workspace_data,
+    write_staging_manifest,
+)
 
 
 def create_app() -> Flask:
@@ -97,6 +103,7 @@ def create_app() -> Flask:
             settings=settings,
             llm_providers=catalog.llm_providers(),
             embedding_providers=catalog.embedding_providers(),
+            reset_done=request.args.get("reset") == "1",
         )
 
     @app.post("/settings")
@@ -110,6 +117,15 @@ def create_app() -> Flask:
         save_settings(settings)
         log.info("settings_saved", extra={"request_id": request.request_id, "user_id": current_user()["id"]})
         return redirect(url_for("settings_page"))
+
+    @app.post("/settings/reset-data")
+    @admin_required
+    def settings_reset_data():
+        if request.form.get("confirm") != "RESET":
+            return ("Confirmation required", 400)
+        reset_all_workspace_data()
+        log.warning("workspace_data_reset", extra={"request_id": request.request_id, "user_id": current_user()["id"]})
+        return redirect(url_for("settings_page", reset="1"))
 
     @app.get("/admin/users")
     @admin_required
@@ -203,16 +219,46 @@ def create_app() -> Flask:
             return jsonify(error="Question is too short"), 400
         workspace = workspace_for_user(current_user()["id"])
         try:
-            from app.session import get_history, save_history
+            from app.session import get_history, save_history, save_payload_usage
             user_id = current_user()["id"]
             history = get_history(user_id)
             result = answer_question(workspace, question, request_id=request.request_id, conversation_history=history)
             answer_text = result.get("answer", "")
-            save_history(user_id, history, message={"role": "user", "content": question[:500]}, answer=answer_text)
+            question_context = result.get("debug", {}).get("question_context", {})
+            history_question = question_context.get("effective") or question
+            save_history(user_id, history, message={"role": "user", "content": history_question}, answer=answer_text)
+            save_payload_usage(user_id, result.get("debug", {}).get("llm_payload"))
             return jsonify(result)
         except Exception as exc:
             log.exception("query_failed", extra={"request_id": request.request_id, "user_id": current_user()["id"]})
             return jsonify(error=str(exc)), 500
+
+    @app.get("/api/session/context")
+    @login_required
+    def api_session_context():
+        from app.session import MAX_CHARS, estimate_history_payload, get_history, get_payload_usage
+        user_id = current_user()["id"]
+        history = get_history(user_id)
+        chars = sum(len(m["content"]) for m in history)
+        usage = get_payload_usage(user_id) or estimate_history_payload(history)
+        return jsonify(
+            chars=usage["chars"],
+            estimated_tokens=usage["estimated_tokens"],
+            history_chars=chars,
+            max_chars=MAX_CHARS,
+            messages=len(history),
+            payload_messages=usage["messages"],
+            percentage=min(usage["chars"] / MAX_CHARS * 100, 100),
+            source=usage["source"],
+        )
+
+    @app.post("/api/session/clear")
+    @login_required
+    def api_session_clear():
+        user = current_user()
+        from app.session import clear_history
+        clear_history(user["id"])
+        return jsonify(ok=True)
 
     return app
 

@@ -53,6 +53,18 @@
     <button class="primary" type="submit">Save settings</button>
   </div>
 </form>
+
+<form id="resetDataForm" class="panel danger-panel" method="post" action="{{ url_for('settings_reset_data') }}">
+  <div>
+    <h2>Reset workspace data</h2>
+    <p class="muted">Delete all uploaded files, staged previews, DuckDB tables, Chroma indexes, workbook metadata, and chat history. Users and provider settings are kept.</p>
+    {% if reset_done %}
+      <p class="alert">Workspace data reset completed.</p>
+    {% endif %}
+  </div>
+  <input id="resetDataConfirm" type="hidden" name="confirm" value="">
+  <button class="danger" type="submit">Reset all workspace data</button>
+</form>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -71,5 +83,16 @@
   }
   bindProvider("chatProvider", "chatModel");
   bindProvider("embeddingProvider", "embeddingModel");
+
+  document.getElementById("resetDataForm")?.addEventListener("submit", (event) => {
+    const ok = confirm(
+      "This will permanently delete all workspace data: uploaded files, DuckDB data, Chroma indexes, metadata, and chat history. Continue?"
+    );
+    if (!ok) {
+      event.preventDefault();
+      return;
+    }
+    document.getElementById("resetDataConfirm").value = "RESET";
+  });
 </script>
 {% endblock %}

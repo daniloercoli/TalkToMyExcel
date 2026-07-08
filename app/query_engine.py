@@ -17,6 +17,11 @@ ID_WORDS = {"matricola", "serial", "serial number", "asset", "machine", "richies
 MAX_LLM_MESSAGES = 20
 MAX_SQL_ROWS = 200
 MAX_HYBRID_FILTER_ROWS = 1000
+MAX_REWRITE_MESSAGES = 8
+MAX_REWRITE_HISTORY_CHARS = 6_000
+MAX_REWRITE_SCHEMA_CHARS = 8_000
+MAX_REWRITTEN_QUESTION_CHARS = 8_000
+CHARS_PER_TOKEN = 4
 ROUTER = QueryRouter()
 
 
@@ -27,6 +32,68 @@ def classify(question: str) -> str:
 def plan_route(question: str, metadata: dict, request_id: str = "") -> dict:
     plan = ROUTER.plan(question, metadata)
     return {"route": plan.route, "reason": plan.reason}
+
+
+def resolve_question(
+    question: str,
+    metadata: dict,
+    conversation_history: list[dict] | None = None,
+) -> tuple[str, dict]:
+    if not conversation_history:
+        return question, {"changed": False, "source": "no_history"}
+
+    history = compact_conversation_history(conversation_history)
+    if not history:
+        return question, {"changed": False, "source": "empty_history"}
+
+    try:
+        settings = load_settings()
+        llm, model = get_llm_provider(settings)
+        system = (
+            "Rewrite the latest user question as a standalone spreadsheet-analysis question. "
+            "Use the recent chat only to resolve references such as 'same', 'those rows', 'that filter', "
+            "'anche questi', 'le stesse', or similar follow-ups. "
+            "Preserve the user's language, exact IDs, filenames, columns, filters, and requested output. "
+            "Do not answer the question. If it is already standalone, return it unchanged. "
+            "Return only JSON: {\"question\": \"...\"}."
+        )
+        user = (
+            f"Recent chat:\n{history}\n\n"
+            f"Latest user question:\n{question}\n\n"
+            f"Workbook schema:\n{metadata_summary(metadata)[:MAX_REWRITE_SCHEMA_CHARS]}"
+        )
+        raw = llm.generate(system, user, model=model, temperature=0.0)
+        payload = parse_json_object(raw)
+        rewritten = str(payload.get("question") or "").strip()
+    except Exception as exc:
+        log.warning("question_rewrite_failed", extra={"error": str(exc)[:300]})
+        return question, {"changed": False, "source": "rewrite_failed", "error": str(exc)[:300]}
+
+    if not rewritten:
+        return question, {"changed": False, "source": "rewrite_empty"}
+
+    effective = rewritten[:MAX_REWRITTEN_QUESTION_CHARS].strip()
+    if effective == question:
+        return question, {"changed": False, "source": "llm_rewrite"}
+    return effective, {
+        "changed": True,
+        "source": "llm_rewrite",
+        "original": question,
+        "effective": effective,
+    }
+
+
+def compact_conversation_history(history: list[dict]) -> str:
+    lines = []
+    for message in history[-MAX_REWRITE_MESSAGES:]:
+        role = str(message.get("role") or "user")
+        content = str(message.get("content") or "").strip()
+        if not content:
+            continue
+        limit = 1_200 if role == "user" else 800
+        lines.append(f"{role}: {content[:limit]}")
+    text = "\n".join(lines)
+    return text[-MAX_REWRITE_HISTORY_CHARS:]
 
 
 def generate_sql_query(question: str, metadata: dict) -> str:
@@ -97,12 +164,16 @@ def answer_question(workspace: Workspace, question: str, request_id: str = "", c
     if not metadata:
         return {"answer": "No workspace data. Upload and import a tabular file first.", "route": "no_dataset", "sources": []}
 
-    route_plan = ROUTER.plan(question, metadata)
+    effective_question, question_context = resolve_question(question, metadata, conversation_history)
+    route_plan = ROUTER.plan(effective_question, metadata)
     log.info(
         "query_route",
         extra={
             "request_id": request_id,
             "workspace_id": workspace.workspace_id,
+            "original_question": question[:500],
+            "effective_question": effective_question[:500],
+            "question_rewritten": question_context.get("changed", False),
             "route": route_plan.route,
             "reason": route_plan.reason,
             "candidates": list(route_plan.ordered_routes()),
@@ -110,7 +181,9 @@ def answer_question(workspace: Workspace, question: str, request_id: str = "", c
         },
     )
     
-    return try_route(workspace, metadata, question, route_plan, request_id, conversation_history)
+    result = try_route(workspace, metadata, effective_question, route_plan, request_id, conversation_history)
+    result.setdefault("debug", {})["question_context"] = question_context
+    return result
 
 
 def try_route(workspace, metadata, question, route_plan: RoutePlan, request_id, conversation_history):
@@ -660,6 +733,7 @@ def llm_answer(question: str, context: dict, route: str, conversation_history: l
         if conversation_history:
             messages.extend(conversation_history[-MAX_LLM_MESSAGES:])
         messages.append({"role": "user", "content": user})
+        payload_usage = estimate_llm_payload(messages)
         answer = generate_with_optional_messages(
             llm,
             system,
@@ -671,7 +745,23 @@ def llm_answer(question: str, context: dict, route: str, conversation_history: l
     except Exception as exc:
         log.warning("llm_fallback", extra={"error": str(exc)[:300]})
         answer = fallback_answer(context)
-    return {"answer": answer, "route": route, "sources": context.get("sources", []), "debug": context.get("debug", {})}
+        payload_usage = None
+    debug = context.get("debug", {})
+    if payload_usage:
+        debug["llm_payload"] = payload_usage
+    return {"answer": answer, "route": route, "sources": context.get("sources", []), "debug": debug}
+
+
+def estimate_llm_payload(messages: list[dict]) -> dict:
+    chars = sum(
+        len(str(message.get("role", ""))) + len(str(message.get("content", ""))) for message in messages
+    )
+    return {
+        "chars": chars,
+        "estimated_tokens": round(chars / CHARS_PER_TOKEN),
+        "messages": len(messages),
+        "source": "last_llm_payload",
+    }
 
 
 def generate_with_optional_messages(llm, system: str, user: str, *, model: str, temperature: float, messages: list[dict]) -> str:

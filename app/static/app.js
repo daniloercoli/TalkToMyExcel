@@ -11,6 +11,12 @@ marked?.use({ breaks: true, gfm: true, headerIds: false, mangle: false });
 const uploadForm = document.getElementById("uploadForm");
 const fileInput = document.getElementById("fileInput");
 const fileName = document.getElementById("fileName");
+const uploadDialog = document.getElementById("uploadDialog");
+const uploadDialogEyebrow = document.getElementById("uploadDialogEyebrow");
+const uploadDialogTitle = document.getElementById("uploadDialogTitle");
+const uploadDialogText = document.getElementById("uploadDialogText");
+const uploadDialogFile = document.getElementById("uploadDialogFile");
+const uploadSteps = [...document.querySelectorAll("[data-upload-step]")];
 const profilePanel = document.getElementById("profilePanel");
 const sheetList = document.getElementById("sheetList");
 const importButton = document.getElementById("importButton");
@@ -20,13 +26,73 @@ const messages = document.getElementById("messages");
 const emptyChat = document.getElementById("emptyChat");
 const chatForm = document.getElementById("chatForm");
 const questionInput = document.getElementById("questionInput");
+const contextUsage = document.getElementById("contextUsage");
+const clearSession = document.getElementById("clearSession");
+async function refreshContext() {
+  if (!contextUsage) return;
+  try {
+    const res = await fetch("/api/session/context");
+    if (!res.ok) throw new Error("Context refresh failed");
+    const data = await res.json();
+    const p = Math.round(data.percentage || 0);
+    contextUsage.textContent = p + "%";
+    contextUsage.style.borderColor = p > 80 ? "var(--danger)" : "";
+    const source = data.source === "last_llm_payload" ? "last LLM payload" : "saved chat estimate";
+    contextUsage.title = `${Number(data.estimated_tokens || 0).toLocaleString()} estimated tokens, ${Number(data.chars || 0).toLocaleString()} chars (${source})`;
+  } catch {}
+}
+clearSession?.addEventListener("click", async () => {
+  try {
+    clearSession.disabled = true;
+    const response = await fetch("/api/session/clear", {method: "POST"});
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch {}
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Clear failed");
+    messages.innerHTML = "";
+    if (emptyChat) messages.appendChild(emptyChat);
+    refreshContext();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    clearSession.disabled = false;
+  }
+});
+const dialogPresets = {
+  upload: {
+    eyebrow: "Upload in progress",
+    title: "Preparing your workbook",
+    messages: [
+      "We are sending the file securely to your workspace.",
+      "We are scanning sheets, columns, and sample rows.",
+      "We are preparing the import preview for you.",
+    ],
+    steps: ["Uploading file", "Scanning sheets", "Preparing preview"],
+  },
+  import: {
+    eyebrow: "Data processing",
+    title: "Building your analysis workspace",
+    messages: [
+      "We are turning selected sheets into structured tables.",
+      "We are preparing semantic text from the columns you selected.",
+      "We are indexing the data so answers can find the right rows.",
+    ],
+    steps: ["Structuring data", "Preparing semantics", "Indexing rows"],
+  },
+};
+let uploadMessages = dialogPresets.upload.messages;
+let uploadStepTimer = null;
+let uploadStepIndex = 0;
 
 uploadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!fileInput.files.length) return;
+  const file = fileInput.files[0];
   const body = new FormData();
-  body.append("file", fileInput.files[0]);
+  body.append("file", file);
   setBusy(uploadForm, true);
+  showUploadDialog(file, dialogPresets.upload);
   try {
     const response = await fetch("/api/staging", {method: "POST", body});
     const payload = await response.json();
@@ -37,11 +103,16 @@ uploadForm.addEventListener("submit", async (event) => {
     alert(error.message);
   } finally {
     setBusy(uploadForm, false);
+    hideUploadDialog();
   }
 });
 
 fileInput.addEventListener("change", () => {
   fileName.textContent = fileInput.files[0]?.name || "No file selected";
+});
+
+uploadDialog?.addEventListener("cancel", (event) => {
+  event.preventDefault();
 });
 
 importButton.addEventListener("click", () => {
@@ -124,6 +195,8 @@ function sendQuestion(question) {
       if (!response.ok) throw new Error(payload.error || "Query failed");
       bot.innerHTML = "";
       bot.innerHTML = parseMd(payload.answer);
+      wrapTables();
+      refreshContext();
       if (payload.sources?.length) bot.appendChild(renderSources(payload.sources));
     } catch (error) {
       bot.textContent = error.message;
@@ -178,6 +251,7 @@ async function importSelected(replaceExisting) {
     return;
   }
   setBusy(importButton, true);
+  showUploadDialog({name: staging.profile?.filename}, dialogPresets.import);
   try {
     const response = await fetch("/api/workbooks", {
       method: "POST",
@@ -194,10 +268,12 @@ async function importSelected(replaceExisting) {
     renderActiveDataset(payload.active);
     profilePanel.hidden = true;
     addMessage("Dataset imported into the workspace. You can start asking questions.", "bot");
+    refreshContext();
   } catch (error) {
     alert(error.message);
   } finally {
     setBusy(importButton, false);
+    hideUploadDialog();
   }
 }
 
@@ -207,6 +283,7 @@ function addMessage(text, kind) {
   div.className = `message ${kind}`;
   if (kind === "bot") {
     div.innerHTML = parseMd(text);
+    wrapTables();
   } else {
     div.textContent = text;
   }
@@ -272,6 +349,47 @@ function setBusy(element, busy) {
   buttons.forEach((button) => button.disabled = busy);
 }
 
+function showUploadDialog(file, preset = dialogPresets.upload) {
+  if (!uploadDialog) return;
+  uploadMessages = preset.messages;
+  uploadDialogEyebrow.textContent = preset.eyebrow;
+  uploadDialogTitle.textContent = preset.title;
+  uploadDialogFile.textContent = file?.name ? file.name : "";
+  uploadSteps.forEach((step, index) => {
+    step.textContent = preset.steps[index] || step.textContent;
+  });
+  setUploadStep(0);
+  if (typeof uploadDialog.showModal === "function") {
+    if (!uploadDialog.open) uploadDialog.showModal();
+  } else {
+    uploadDialog.setAttribute("open", "");
+  }
+  uploadStepTimer = window.setInterval(() => {
+    setUploadStep((uploadStepIndex + 1) % uploadMessages.length);
+  }, 1300);
+}
+
+function hideUploadDialog() {
+  if (uploadStepTimer) {
+    window.clearInterval(uploadStepTimer);
+    uploadStepTimer = null;
+  }
+  if (!uploadDialog) return;
+  if (typeof uploadDialog.close === "function" && uploadDialog.open) {
+    uploadDialog.close();
+  } else {
+    uploadDialog.removeAttribute("open");
+  }
+}
+
+function setUploadStep(index) {
+  uploadStepIndex = index;
+  uploadSteps.forEach((step, current) => {
+    step.classList.toggle("active", current === index);
+  });
+  if (uploadDialogText) uploadDialogText.textContent = uploadMessages[index];
+}
+
 function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, char => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -281,3 +399,18 @@ function escapeHtml(text) {
 function escapeAttr(text) {
   return escapeHtml(text);
 }
+
+(function () {
+  window.wrapTables = function () {
+    const wrap = (table) => {
+      if (table.closest('.table-scroll')) return;
+      const div = document.createElement('div');
+      div.className = 'table-scroll';
+      table.replaceWith(div);
+      div.appendChild(table);
+    };
+    messages.querySelectorAll('table').forEach(wrap);
+  };
+  window.wrapTables();
+  refreshContext();
+})();
