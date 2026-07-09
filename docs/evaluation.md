@@ -37,6 +37,20 @@ Recommended shape:
 }
 ```
 
+Follow-up questions can include recent chat history. The route evaluator uses it only to resolve the current question for routing metrics:
+
+```json
+{
+  "id": "Q002",
+  "history": [
+    {"role": "user", "content": "Find cases similar to motor vibration"},
+    {"role": "assistant", "content": "The closest vibration cases are MX-1001 and MX-1003."}
+  ],
+  "question": "same, but only open",
+  "expected_route": "hybrid"
+}
+```
+
 `private/` is gitignored, so generated files such as `private/golden_qa.json`, `private/golden_qa.md`, and `private/golden_qa_eval.json` stay local.
 
 ## Route Evaluation
@@ -61,7 +75,7 @@ Use a threshold in CI-like checks:
 .venv/bin/python scripts/evaluate_golden_qa.py private/golden_qa.json --min-accuracy 0.9
 ```
 
-The script prints only summary metrics by default. Use `--verbose` for per-question route IDs, expected routes, actual routes, reasons, and candidate chains. Avoid sharing verbose output when the golden set contains production-derived questions.
+The script prints only summary metrics by default, including how many questions were contextualized from history. Use `--verbose` for per-question route IDs, expected routes, actual routes, reasons, and candidate chains. Avoid sharing verbose output when the golden set contains production-derived questions.
 
 ## Interpreting Results
 

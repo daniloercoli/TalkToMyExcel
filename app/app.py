@@ -224,9 +224,7 @@ def create_app() -> Flask:
             history = get_history(user_id)
             result = answer_question(workspace, question, request_id=request.request_id, conversation_history=history)
             answer_text = result.get("answer", "")
-            question_context = result.get("debug", {}).get("question_context", {})
-            history_question = question_context.get("effective") or question
-            save_history(user_id, history, message={"role": "user", "content": history_question}, answer=answer_text)
+            save_history(user_id, history, message={"role": "user", "content": question}, answer=answer_text)
             save_payload_usage(user_id, result.get("debug", {}).get("llm_payload"))
             return jsonify(result)
         except Exception as exc:

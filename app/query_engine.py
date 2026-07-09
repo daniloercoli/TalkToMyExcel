@@ -14,13 +14,41 @@ from app.workbook import active_workbook, fetch_rows, quote_ident
 OPEN_WORDS = {"open", "opened", "aperto", "aperta", "aperti", "aperte"}
 STATUS_WORDS = {"status", "state", "stato"}
 ID_WORDS = {"matricola", "serial", "serial number", "asset", "machine", "richiesta", "request", "ticket", "case"}
+FOLLOWUP_WORDS = {
+    "same",
+    "same thing",
+    "stessa cosa",
+    "stesso",
+    "stessa",
+    "stessi",
+    "stesse",
+    "idem",
+    "again",
+    "ancora",
+    "those",
+    "these",
+    "that",
+    "them",
+    "quelli",
+    "quelle",
+    "questi",
+    "queste",
+    "quello",
+    "quella",
+    "gli altri",
+    "le altre",
+    "altri",
+    "altre",
+    "others",
+    "but only",
+    "ma solo",
+}
+DETAIL_ROUTE_WORDS = {"stampa", "dettagli", "mostra", "elenca", "show details", "print details", "list all"}
 MAX_LLM_MESSAGES = 20
 MAX_SQL_ROWS = 200
 MAX_HYBRID_FILTER_ROWS = 1000
-MAX_REWRITE_MESSAGES = 8
-MAX_REWRITE_HISTORY_CHARS = 6_000
-MAX_REWRITE_SCHEMA_CHARS = 8_000
-MAX_REWRITTEN_QUESTION_CHARS = 8_000
+MAX_INLINE_CONTEXT_MESSAGES = 2
+MAX_INLINE_CONTEXT_CHARS = 2_000
 CHARS_PER_TOKEN = 4
 ROUTER = QueryRouter()
 
@@ -34,69 +62,53 @@ def plan_route(question: str, metadata: dict, request_id: str = "") -> dict:
     return {"route": plan.route, "reason": plan.reason}
 
 
-def resolve_question(
-    question: str,
-    metadata: dict,
-    conversation_history: list[dict] | None = None,
-) -> tuple[str, dict]:
+def question_prompt(question: str, metadata: dict, conversation_history: list[dict] | None = None) -> str:
+    context = recent_conversation_context(conversation_history)
+    parts = []
+    if context:
+        parts.append(
+            "Recent context (use only to resolve follow-up references in the current question):\n"
+            f"{context}"
+        )
+    parts.append(f"Question:\n{question}")
+    parts.append(f"Workbook Schema:\n{metadata_summary(metadata)}")
+    return "\n\n".join(parts)
+
+
+def recent_conversation_context(conversation_history: list[dict] | None = None) -> str:
     if not conversation_history:
-        return question, {"changed": False, "source": "no_history"}
-
-    history = compact_conversation_history(conversation_history)
-    if not history:
-        return question, {"changed": False, "source": "empty_history"}
-
-    try:
-        settings = load_settings()
-        llm, model = get_llm_provider(settings)
-        system = (
-            "Rewrite the latest user question as a standalone spreadsheet-analysis question. "
-            "Use the recent chat only to resolve references such as 'same', 'those rows', 'that filter', "
-            "'anche questi', 'le stesse', or similar follow-ups. "
-            "Preserve the user's language, exact IDs, filenames, columns, filters, and requested output. "
-            "Do not answer the question. If it is already standalone, return it unchanged. "
-            "Return only JSON: {\"question\": \"...\"}."
-        )
-        user = (
-            f"Recent chat:\n{history}\n\n"
-            f"Latest user question:\n{question}\n\n"
-            f"Workbook schema:\n{metadata_summary(metadata)[:MAX_REWRITE_SCHEMA_CHARS]}"
-        )
-        raw = llm.generate(system, user, model=model, temperature=0.0)
-        payload = parse_json_object(raw)
-        rewritten = str(payload.get("question") or "").strip()
-    except Exception as exc:
-        log.warning("question_rewrite_failed", extra={"error": str(exc)[:300]})
-        return question, {"changed": False, "source": "rewrite_failed", "error": str(exc)[:300]}
-
-    if not rewritten:
-        return question, {"changed": False, "source": "rewrite_empty"}
-
-    effective = rewritten[:MAX_REWRITTEN_QUESTION_CHARS].strip()
-    if effective == question:
-        return question, {"changed": False, "source": "llm_rewrite"}
-    return effective, {
-        "changed": True,
-        "source": "llm_rewrite",
-        "original": question,
-        "effective": effective,
-    }
-
-
-def compact_conversation_history(history: list[dict]) -> str:
+        return ""
     lines = []
-    for message in history[-MAX_REWRITE_MESSAGES:]:
-        role = str(message.get("role") or "user")
+    content_limit = MAX_INLINE_CONTEXT_CHARS // MAX_INLINE_CONTEXT_MESSAGES
+    for message in conversation_history[-MAX_INLINE_CONTEXT_MESSAGES:]:
+        role = str(message.get("role") or "user").strip() or "user"
         content = str(message.get("content") or "").strip()
-        if not content:
-            continue
-        limit = 1_200 if role == "user" else 800
-        lines.append(f"{role}: {content[:limit]}")
-    text = "\n".join(lines)
-    return text[-MAX_REWRITE_HISTORY_CHARS:]
+        if content:
+            lines.append(f"{role}: {content[:content_limit]}")
+    return "\n".join(lines)
 
 
-def generate_sql_query(question: str, metadata: dict) -> str:
+def has_any_phrase(text: str, phrases: set[str]) -> bool:
+    low = text.lower()
+    return any(re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", low) for phrase in phrases)
+
+
+def contextual_followup_question(question: str, conversation_history: list[dict] | None = None) -> str:
+    if not has_any_phrase(question, FOLLOWUP_WORDS):
+        return question
+    context = recent_conversation_context(conversation_history)
+    if not context:
+        return question
+    return f"Recent context:\n{context}\n\nFollow-up question:\n{question}"
+
+
+def routing_question(question: str, conversation_history: list[dict] | None = None) -> str:
+    if has_any_phrase(question, DETAIL_ROUTE_WORDS):
+        return question
+    return contextual_followup_question(question, conversation_history)
+
+
+def generate_sql_query(question: str, metadata: dict, conversation_history: list[dict] | None = None) -> str:
     """Generates a DuckDB SQL query based on the user's question and table metadata"""
     settings = load_settings()
     llm, model = get_llm_provider(settings)
@@ -116,7 +128,7 @@ def generate_sql_query(question: str, metadata: dict) -> str:
         "9. Only return the SQL query, no explanations."
     )
     
-    user = f"Question:\n{question}\n\nWorkbook Schema:\n{metadata_summary(metadata)}"
+    user = question_prompt(question, metadata, conversation_history)
     
     raw = llm.generate(system, user, model=model, temperature=0.0)
     try:
@@ -127,7 +139,7 @@ def generate_sql_query(question: str, metadata: dict) -> str:
         return code if code else ""
 
 
-def generate_hybrid_filter_sql(question: str, metadata: dict) -> str:
+def generate_hybrid_filter_sql(question: str, metadata: dict, conversation_history: list[dict] | None = None) -> str:
     """Generate a row_id filter query for hybrid SQL + semantic retrieval."""
     settings = load_settings()
     llm, model = get_llm_provider(settings)
@@ -148,7 +160,7 @@ def generate_hybrid_filter_sql(question: str, metadata: dict) -> str:
         f"8. Add LIMIT {MAX_HYBRID_FILTER_ROWS + 1} unless the query already has a stricter limit.\n"
         "9. Return no explanations."
     )
-    user = f"Question:\n{question}\n\nWorkbook Schema:\n{metadata_summary(metadata)}"
+    user = question_prompt(question, metadata, conversation_history)
 
     raw = llm.generate(system, user, model=model, temperature=0.0)
     try:
@@ -164,16 +176,15 @@ def answer_question(workspace: Workspace, question: str, request_id: str = "", c
     if not metadata:
         return {"answer": "No workspace data. Upload and import a tabular file first.", "route": "no_dataset", "sources": []}
 
-    effective_question, question_context = resolve_question(question, metadata, conversation_history)
-    route_plan = ROUTER.plan(effective_question, metadata)
+    route_input = routing_question(question, conversation_history)
+    route_plan = ROUTER.plan(route_input, metadata)
     log.info(
         "query_route",
         extra={
             "request_id": request_id,
             "workspace_id": workspace.workspace_id,
-            "original_question": question[:500],
-            "effective_question": effective_question[:500],
-            "question_rewritten": question_context.get("changed", False),
+            "route_contextualized": route_input != question,
+            "route_question": route_input[:500],
             "route": route_plan.route,
             "reason": route_plan.reason,
             "candidates": list(route_plan.ordered_routes()),
@@ -181,9 +192,7 @@ def answer_question(workspace: Workspace, question: str, request_id: str = "", c
         },
     )
     
-    result = try_route(workspace, metadata, effective_question, route_plan, request_id, conversation_history)
-    result.setdefault("debug", {})["question_context"] = question_context
-    return result
+    return try_route(workspace, metadata, question, route_plan, request_id, conversation_history)
 
 
 def try_route(workspace, metadata, question, route_plan: RoutePlan, request_id, conversation_history):
@@ -254,10 +263,10 @@ def run_route(workspace, metadata, question, route, route_plan, request_id, conv
                 result["_routing_detail"] = result.get("debug", {}).get("stderr_preview") or "python_failed"
             return result
         if route == "semantic":
-            context = semantic_context(workspace, metadata, question)
+            context = semantic_context(workspace, metadata, question, conversation_history=conversation_history)
             return answer_from_context(question, context, "semantic", conversation_history)
         if route == "hybrid":
-            context = hybrid_semantic_context(workspace, metadata, question, request_id)
+            context = hybrid_semantic_context(workspace, metadata, question, request_id, conversation_history)
             return answer_from_context(question, context, "hybrid", conversation_history)
         if route == "multi":
             return multi_answer(workspace, metadata, question, route_plan, request_id, conversation_history)
@@ -347,7 +356,7 @@ def route_failed(route: str, detail: str) -> dict:
 def sql_answer(workspace: Workspace, metadata: dict, question: str, request_id: str, conversation_history: list[dict] | None) -> dict:
     import duckdb
 
-    sql = generate_sql_query(question, metadata)
+    sql = generate_sql_query(question, metadata, conversation_history)
     if not sql:
         return route_failed("sql", "sql_generation_empty")
     try:
@@ -478,8 +487,14 @@ def status_context(workspace: Workspace, metadata: dict, question: str) -> dict:
     return {"kind": "status", "rows": rows, "sources": source_rows(rows)}
 
 
-def hybrid_semantic_context(workspace: Workspace, metadata: dict, question: str, request_id: str = "") -> dict:
-    filter_sql = generate_hybrid_filter_sql(question, metadata)
+def hybrid_semantic_context(
+    workspace: Workspace,
+    metadata: dict,
+    question: str,
+    request_id: str = "",
+    conversation_history: list[dict] | None = None,
+) -> dict:
+    filter_sql = generate_hybrid_filter_sql(question, metadata, conversation_history)
     if not filter_sql:
         return {"kind": "hybrid", "rows": [], "sources": [], "debug": {"hybrid_filter": "empty"}}
     try:
@@ -501,7 +516,7 @@ def hybrid_semantic_context(workspace: Workspace, metadata: dict, question: str,
             "debug": {"hybrid_filter_sql": filter_sql, "filtered_rows": 0, "truncated": truncated},
         }
 
-    context = semantic_context(workspace, metadata, question, candidate_row_ids=row_ids)
+    context = semantic_context(workspace, metadata, question, candidate_row_ids=row_ids, conversation_history=conversation_history)
     context["kind"] = "hybrid"
     debug = context.setdefault("debug", {})
     debug.update(
@@ -546,10 +561,12 @@ def semantic_context(
     metadata: dict,
     question: str,
     candidate_row_ids: list[str] | set[str] | tuple[str, ...] | None = None,
+    conversation_history: list[dict] | None = None,
 ) -> dict:
     settings = load_settings()
     embedder, _model = get_embedding_provider(settings)
-    query_embedding = embedder.encode_query(question)
+    retrieval_question = contextual_followup_question(question, conversation_history)
+    query_embedding = embedder.encode_query(retrieval_question)
     hits = query_rows(workspace.chroma_dir, workspace.chroma_collection, query_embedding, top_k=20, row_ids=candidate_row_ids)
     rows = fetch_rows(workspace, metadata, [hit["id"] for hit in hits])
     if wants_open(question):
@@ -564,6 +581,7 @@ def semantic_context(
             "semantic_hits": len(hits),
             "returned_rows": len(rows[:12]),
             "candidate_rows": len(candidate_row_ids or []),
+            "retrieval_contextualized": retrieval_question != question,
         },
     }
 
@@ -788,7 +806,7 @@ def compact_python_result(result: dict) -> str:
         "stderr": result.get("stderr"),
         "tables": result.get("tables"),
     }
-    return json.dumps(payload, ensure_ascii=False, default=str)[:10000]
+    return json.dumps(payload, ensure_ascii=False, default=str, indent=2)[:100000]
 
 
 def metadata_summary(metadata: dict) -> str:

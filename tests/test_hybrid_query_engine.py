@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app import query_engine
 from app.routing import RoutePlan
 from app.stores import Workspace
@@ -8,6 +10,24 @@ from app.stores import Workspace
 class FakeEmbedding:
     def encode_query(self, text):
         return [1.0]
+
+
+class CapturingEmbedding:
+    def __init__(self):
+        self.queries = []
+
+    def encode_query(self, text):
+        self.queries.append(text)
+        return [1.0]
+
+
+class CapturingLLM:
+    def __init__(self):
+        self.users = []
+
+    def generate(self, system, user, model, temperature=0.2):
+        self.users.append(user)
+        return json.dumps({"sql": 'SELECT count(*) FROM "cases"'})
 
 
 def make_workspace(tmp_path):
@@ -65,7 +85,7 @@ def test_hybrid_semantic_context_filters_vectors_with_sql_row_ids(monkeypatch, t
     monkeypatch.setattr(
         query_engine,
         "generate_hybrid_filter_sql",
-        lambda _question, _metadata: 'SELECT row_id FROM "cases" WHERE lower("status") = \'open\'',
+        lambda _question, _metadata, _history=None: 'SELECT row_id FROM "cases" WHERE lower("status") = \'open\'',
     )
     monkeypatch.setattr(query_engine, "get_embedding_provider", lambda _settings: (FakeEmbedding(), "fake"))
 
@@ -81,6 +101,90 @@ def test_hybrid_semantic_context_filters_vectors_with_sql_row_ids(monkeypatch, t
     assert context["rows"][0]["matricola"] == "MX-1001"
     assert context["debug"]["filtered_rows"] == 1
     assert context["debug"]["semantic_hits"] == 1
+
+
+def test_sql_generators_include_recent_conversation_context(monkeypatch, tmp_path):
+    _workspace, metadata = make_workspace(tmp_path)
+    llm = CapturingLLM()
+    history = [
+        {"role": "user", "content": "Find cases similar to motor vibration"},
+        {"role": "assistant", "content": "The closest vibration cases are MX-1001 and MX-1003."},
+    ]
+
+    monkeypatch.setattr(query_engine, "load_settings", lambda: {})
+    monkeypatch.setattr(query_engine, "get_llm_provider", lambda _settings: (llm, "fake"))
+
+    query_engine.generate_sql_query("same, but only open", metadata, history)
+    query_engine.generate_hybrid_filter_sql("same, but only open", metadata, history)
+
+    assert len(llm.users) == 2
+    for user in llm.users:
+        assert "Recent context" in user
+        assert "motor vibration" in user
+        assert "Question:\nsame, but only open" in user
+
+
+def test_answer_question_routes_followup_with_recent_context(monkeypatch, tmp_path):
+    workspace, metadata = make_workspace(tmp_path)
+    captured = {}
+    history = [
+        {"role": "user", "content": "Find cases similar to motor vibration"},
+        {"role": "assistant", "content": "The closest vibration cases are MX-1001 and MX-1003."},
+    ]
+
+    monkeypatch.setattr(query_engine, "active_workbook", lambda _workspace: metadata)
+
+    def fake_run_route(workspace, metadata, question, route, route_plan, request_id, conversation_history):
+        captured["question"] = question
+        captured["route"] = route
+        return {"answer": "ok", "route": route, "sources": [], "debug": {}}
+
+    monkeypatch.setattr(query_engine, "run_route", fake_run_route)
+
+    result = query_engine.answer_question(workspace, "same, but only open", conversation_history=history)
+
+    assert captured["question"] == "same, but only open"
+    assert captured["route"] == "hybrid"
+    assert result["debug"]["route_plan"]["source"] == "HybridStructuredSemanticStrategy"
+
+
+def test_detail_followup_keeps_python_route(monkeypatch, tmp_path):
+    workspace, metadata = make_workspace(tmp_path)
+    captured = {}
+    history = [
+        {"role": "user", "content": "Find open cases similar to motor vibration"},
+        {"role": "assistant", "content": "The closest cases are MX-1001 and MX-1003."},
+    ]
+
+    monkeypatch.setattr(query_engine, "active_workbook", lambda _workspace: metadata)
+
+    def fake_run_route(workspace, metadata, question, route, route_plan, request_id, conversation_history):
+        captured["route"] = route
+        return {"answer": "ok", "route": route, "sources": [], "debug": {}}
+
+    monkeypatch.setattr(query_engine, "run_route", fake_run_route)
+
+    query_engine.answer_question(workspace, "stampa i dettagli di quelle 2 richieste", conversation_history=history)
+
+    assert captured["route"] == "python"
+
+
+def test_semantic_context_embeds_followup_with_recent_context(monkeypatch, tmp_path):
+    workspace, metadata = make_workspace(tmp_path)
+    embedder = CapturingEmbedding()
+    history = [
+        {"role": "user", "content": "Find cases similar to motor vibration"},
+        {"role": "assistant", "content": "The closest vibration cases are MX-1001 and MX-1003."},
+    ]
+
+    monkeypatch.setattr(query_engine, "get_embedding_provider", lambda _settings: (embedder, "fake"))
+    monkeypatch.setattr(query_engine, "query_rows", lambda *args, **kwargs: [{"id": "cases_1", "distance": 0.01}])
+
+    context = query_engine.semantic_context(workspace, metadata, "same", conversation_history=history)
+
+    assert "motor vibration" in embedder.queries[0]
+    assert "Follow-up question:\nsame" in embedder.queries[0]
+    assert context["debug"]["retrieval_contextualized"] is True
 
 
 def test_multi_answer_synthesizes_successful_subroutes(monkeypatch):

@@ -34,6 +34,24 @@ def synthetic_payload():
                 "question": "How many open cases and which notes mention vibration?",
                 "expected_route": "multi",
             },
+            {
+                "id": "Q004",
+                "history": [
+                    {"role": "user", "content": "Find cases similar to motor vibration"},
+                    {"role": "assistant", "content": "The closest vibration cases are MX-1001 and MX-1003."},
+                ],
+                "question": "same, but only open",
+                "expected_route": "hybrid",
+            },
+            {
+                "id": "Q005",
+                "history": [
+                    {"role": "user", "content": "Find open cases similar to motor vibration"},
+                    {"role": "assistant", "content": "The closest cases are MX-1001 and MX-1003."},
+                ],
+                "question": "stampa i dettagli di quelle 2 richieste",
+                "expected_route": "python",
+            },
         ],
     }
 
@@ -48,8 +66,12 @@ def test_metadata_from_profile_keeps_semantic_columns():
 def test_evaluate_routes_uses_deterministic_router():
     results = evaluate_routes(synthetic_payload())
 
-    assert [result.actual_route for result in results] == ["count", "hybrid", "multi"]
-    assert summarize(results)["accuracy"] == 1.0
+    assert [result.actual_route for result in results] == ["count", "hybrid", "multi", "hybrid", "python"]
+    summary = summarize(results)
+    assert summary["accuracy"] == 1.0
+    assert summary["contextualized"] == 1
+    assert summary["contextualized_matched"] == 1
+    assert [result.question_contextualized for result in results] == [False, False, False, True, False]
 
 
 def test_cli_writes_private_style_report(tmp_path, capsys):
@@ -61,5 +83,5 @@ def test_cli_writes_private_style_report(tmp_path, capsys):
 
     assert exit_code == 0
     report = json.loads(output_path.read_text(encoding="utf-8"))
-    assert report["summary"]["matched"] == 3
+    assert report["summary"]["matched"] == 5
     assert '"accuracy": 1.0' in capsys.readouterr().out

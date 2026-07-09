@@ -26,6 +26,7 @@ from app.routing import (  # noqa: E402
     SimpleCountStrategy,
     StatusIdStrategy,
 )
+from app.query_engine import routing_question  # noqa: E402
 from app.logging_config import log  # noqa: E402
 
 
@@ -41,6 +42,7 @@ class EvaluationResult:
     reason: str
     source: str
     candidates: list[str]
+    question_contextualized: bool = False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -113,7 +115,10 @@ def evaluate_routes(payload: dict, *, use_llm_router: bool = False) -> list[Eval
     metadata = metadata_from_profile(payload.get("profile") or {})
     results = []
     for item in payload["questions"]:
-        plan = router.plan(item["question"], metadata)
+        question = str(item["question"])
+        history = item.get("history") or item.get("conversation_history")
+        routed_question = routing_question(question, history if isinstance(history, list) else None)
+        plan = router.plan(routed_question, metadata)
         expected = str(item.get("expected_route") or "").strip()
         actual = plan.route
         results.append(
@@ -125,6 +130,7 @@ def evaluate_routes(payload: dict, *, use_llm_router: bool = False) -> list[Eval
                 reason=plan.reason,
                 source=plan.source,
                 candidates=list(plan.ordered_routes()),
+                question_contextualized=routed_question != question,
             )
         )
     return results
@@ -170,6 +176,8 @@ def metadata_from_profile(profile: dict) -> dict:
 def summarize(results: list[EvaluationResult]) -> dict:
     total = len(results)
     matched = sum(1 for result in results if result.matched)
+    contextualized = sum(1 for result in results if result.question_contextualized)
+    contextualized_matched = sum(1 for result in results if result.question_contextualized and result.matched)
     by_expected: dict[str, dict[str, int]] = {}
     for result in results:
         bucket = by_expected.setdefault(result.expected_route, {"total": 0, "matched": 0})
@@ -180,6 +188,8 @@ def summarize(results: list[EvaluationResult]) -> dict:
         "matched": matched,
         "failed": total - matched,
         "accuracy": matched / total if total else 0.0,
+        "contextualized": contextualized,
+        "contextualized_matched": contextualized_matched,
         "by_expected_route": by_expected,
     }
 
@@ -194,6 +204,8 @@ def print_summary(report: dict, *, verbose: bool) -> None:
                 "matched": summary["matched"],
                 "failed": summary["failed"],
                 "accuracy": round(summary["accuracy"], 4),
+                "contextualized": summary["contextualized"],
+                "contextualized_matched": summary["contextualized_matched"],
                 "by_expected_route": summary["by_expected_route"],
             },
             ensure_ascii=False,
@@ -213,6 +225,7 @@ def print_summary(report: dict, *, verbose: bool) -> None:
                     "reason": result["reason"],
                     "source": result["source"],
                     "candidates": result["candidates"],
+                    "contextualized": result["question_contextualized"],
                 },
                 ensure_ascii=False,
             )
