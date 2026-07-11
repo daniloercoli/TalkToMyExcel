@@ -31,6 +31,7 @@
         </div>
       {% endif %}
     </div>
+    <button id="rebuildIndexBtn" type="button" class="secondary" title="Rebuild semantic search index"{% if not active or active.datasets|length == 0 %} hidden{% endif %}>Rebuild Search Index</button>
 
     <form id="uploadForm" class="upload-zone">
       <label class="file-picker">

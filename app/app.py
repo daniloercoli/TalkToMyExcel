@@ -210,6 +210,22 @@ def create_app() -> Flask:
             log.exception("workbook_delete_failed", extra={"request_id": request.request_id, "user_id": user["id"]})
             return jsonify(error=str(exc)), 400
 
+    @app.post("/api/semantic-index/rebuild")
+    @login_required
+    def api_rebuild_semantic_index():
+        user = current_user()
+        workspace = workspace_for_user(user["id"])
+        try:
+            from app.workbook import rebuild_semantic_index_full
+            metadata = active_workbook(workspace)
+            if not metadata:
+                return jsonify(error="No workspace data"), 400
+            rebuild_semantic_index_full(workspace, metadata, request_id=request.request_id)
+            return jsonify(ok=True)
+        except Exception as exc:
+            log.exception("semantic_index_rebuild_failed", extra={"request_id": request.request_id, "user_id": user["id"]})
+            return jsonify(error=str(exc)), 400
+
     @app.post("/api/query")
     @login_required
     def api_query():

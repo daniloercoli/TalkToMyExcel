@@ -173,11 +173,23 @@ def client_env(tmp_path, monkeypatch):
 
     fake_llm = FakeLLM()
     indexed_rows = []
+    reset_calls = []
+
+    def fake_reset_collection(*_args, **_kwargs):
+        reset_calls.append(True)
+        indexed_rows.clear()
 
     monkeypatch.setattr(app_module, "profile_in_sandbox", fake_profile_in_sandbox)
     monkeypatch.setattr(workbook, "get_embedding_provider", lambda _settings: (FakeEmbedding(), "fake-embedding"))
-    monkeypatch.setattr(workbook, "reset_collection", lambda *_args, **_kwargs: indexed_rows.clear())
+    monkeypatch.setattr(workbook, "reset_collection", fake_reset_collection)
     monkeypatch.setattr(workbook, "add_rows", lambda _path, _collection, rows, _embeddings: indexed_rows.extend(rows))
+    monkeypatch.setattr(
+        workbook,
+        "delete_by_workbook_id",
+        lambda _path, _collection, workbook_id: indexed_rows.__setitem__(
+            slice(None), [row for row in indexed_rows if row["metadata"]["workbook_id"] != workbook_id]
+        ),
+    )
     monkeypatch.setattr(query_engine, "get_llm_provider", lambda _settings=None: (fake_llm, "fake-chat"))
     monkeypatch.setattr(query_engine, "get_embedding_provider", lambda _settings=None: (FakeEmbedding(), "fake-embedding"))
     monkeypatch.setattr(query_engine, "query_rows", lambda *_args, **_kwargs: fake_query_rows(indexed_rows))
@@ -191,7 +203,12 @@ def client_env(tmp_path, monkeypatch):
 
     app = app_module.create_app()
     app.config["TESTING"] = True
-    return {"client": app.test_client(), "indexed_rows": indexed_rows, "fake_llm": fake_llm}
+    return {
+        "client": app.test_client(),
+        "indexed_rows": indexed_rows,
+        "reset_calls": reset_calls,
+        "fake_llm": fake_llm,
+    }
 
 
 def test_excel_upload_import_and_query_routes(client_env):
@@ -293,6 +310,7 @@ def test_excel_upload_import_and_query_routes(client_env):
     ]
     assert {table["sheet"] for table in appended_active["tables"]} == {"Cases", "Expected", "Data"}
     assert len(client_env["indexed_rows"]) == 7
+    assert client_env["reset_calls"] == []
 
     combined_count = ask(client, "How many cases are open or closed?")
     assert combined_count["route"] == "count"
@@ -344,6 +362,7 @@ def test_excel_upload_import_and_query_routes(client_env):
     assert deleted_last.status_code == 200
     assert deleted_last.get_json()["active"] is None
     assert client_env["indexed_rows"] == []
+    assert len(client_env["reset_calls"]) == 1
     assert not xlsx_staging_dir.exists()
     assert not workbook_dir.exists()
 

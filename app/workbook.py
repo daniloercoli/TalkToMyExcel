@@ -10,7 +10,7 @@ from app.config import Config
 from app.logging_config import log
 from app.providers.factory import get_embedding_provider, load_settings
 from app.stores import Workspace
-from app.vector_store import add_rows, reset_collection
+from app.vector_store import add_rows, delete_by_workbook_id, reset_collection
 
 
 def active_workbook(workspace: Workspace) -> dict | None:
@@ -98,7 +98,7 @@ def replace_workbook(
     metadata["datasets"].append(dataset)
     metadata = normalize_metadata(metadata)
     workspace.metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
-    rebuild_semantic_index(workspace, metadata, request_id=request_id)
+    rebuild_semantic_index_incremental(workspace, dataset, request_id=request_id)
     log.info(
         "workbook_imported",
         extra={"request_id": request_id, "workspace_id": workspace.workspace_id, "workbook_id": workbook_id},
@@ -127,8 +127,11 @@ def remove_workbook_dataset(workspace: Workspace, workbook_id: str, request_id: 
     metadata = normalize_metadata(metadata)
     if metadata["datasets"]:
         workspace.metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
-        rebuild_semantic_index(workspace, metadata, request_id=request_id)
+        # Rimuovi solo i documenti di questo dataset dall'indice
+        delete_by_workbook_id(workspace.chroma_dir, workspace.chroma_collection, workbook_id)
     else:
+        # Nessun dataset rimasto: cancella tutto senza chiamare rebuild
+        workspace.metadata_path.write_text(json.dumps(empty_metadata(), indent=2, ensure_ascii=False), encoding="utf-8")
         reset_collection(workspace.chroma_dir, workspace.chroma_collection)
         if workspace.workbook_dir.exists():
             shutil.rmtree(workspace.workbook_dir)
@@ -142,11 +145,11 @@ def remove_workbook_dataset(workspace: Workspace, workbook_id: str, request_id: 
     return metadata if metadata["datasets"] else None
 
 
-def rebuild_semantic_index(workspace: Workspace, metadata: dict, request_id: str = "") -> None:
+def rebuild_semantic_index_full(workspace: Workspace, metadata: dict, request_id: str = "") -> None:
     import duckdb
 
-    reset_collection(workspace.chroma_dir, workspace.chroma_collection)
     if not metadata.get("tables"):
+        reset_collection(workspace.chroma_dir, workspace.chroma_collection)
         return
     conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
     rows_to_add: list[dict] = []
@@ -191,23 +194,100 @@ def rebuild_semantic_index(workspace: Workspace, metadata: dict, request_id: str
 
     model = ""
     if rows_to_add:
+        reset_collection(workspace.chroma_dir, workspace.chroma_collection)
         provider, model = get_embedding_provider(load_settings())
         batch_size = 64
         for start in range(0, len(rows_to_add), batch_size):
             batch = rows_to_add[start : start + batch_size]
             embeddings = provider.encode_documents([row["text"] for row in batch])
             add_rows(workspace.chroma_dir, workspace.chroma_collection, batch, embeddings)
-    log.info(
-        "semantic_index_rebuilt",
-        extra={
-            "request_id": request_id,
-            "workspace_id": workspace.workspace_id,
-            "documents": len(rows_to_add),
-            "chunk_size": chunk_size,
-            "chunk_overlap": chunk_overlap,
-            "embedding_model": model,
-        },
-    )
+        log.info(
+            "semantic_index_rebuilt",
+            extra={
+                "request_id": request_id,
+                "workspace_id": workspace.workspace_id,
+                "documents": len(rows_to_add),
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "embedding_model": model,
+            },
+        )
+    else:
+        reset_collection(workspace.chroma_dir, workspace.chroma_collection)
+
+
+def rebuild_semantic_index_incremental(workspace: Workspace, dataset: dict, request_id: str = "") -> None:
+    import duckdb
+
+    semantic_columns_by_sheet = {
+        table["sheet"]: table.get("semantic_columns") or []
+        for table in dataset.get("tables", [])
+        if table.get("semantic_columns")
+    }
+
+    if not semantic_columns_by_sheet:
+        return
+
+    conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
+    rows_to_add: list[dict] = []
+    chunk_size, chunk_overlap = semantic_chunk_config()
+
+    for table in dataset.get("tables", []):
+        semantic_columns = semantic_columns_by_sheet.get(table["sheet"], [])
+        if not semantic_columns:
+            continue
+        select_cols = ", ".join(quote_ident(col) for col in semantic_columns)
+        query = f"SELECT row_id, sheet_name, original_row_number, {select_cols} FROM {quote_ident(table['table'])}"
+        for row in conn.execute(query).fetchall():
+            row_id, sheet_name, original_row_number, *values = row
+            parts = []
+            for col, value in zip(semantic_columns, values):
+                text = str(value or "").strip()
+                if text:
+                    parts.append(f"{col}: {text}")
+            semantic_text = "\n".join(parts).strip()
+            if not semantic_text:
+                continue
+            chunks = chunk_semantic_text(semantic_text, chunk_size=chunk_size, overlap=chunk_overlap)
+            for chunk_index, chunk_text in enumerate(chunks):
+                row_id_text = str(row_id)
+                chunk_id = row_id_text if len(chunks) == 1 else f"{row_id_text}::chunk_{chunk_index:04d}"
+                rows_to_add.append(
+                    {
+                        "id": chunk_id,
+                        "text": chunk_text,
+                        "metadata": {
+                            "row_id": str(row_id),
+                            "workbook_id": table.get("workbook_id"),
+                            "filename": table.get("filename"),
+                            "sheet": str(sheet_name),
+                            "table": table["table"],
+                            "original_row_number": int(original_row_number),
+                            "chunk_index": chunk_index,
+                            "chunk_count": len(chunks),
+                        },
+                    }
+                )
+    conn.close()
+
+    if rows_to_add:
+        provider, model = get_embedding_provider(load_settings())
+        batch_size = 64
+        for start in range(0, len(rows_to_add), batch_size):
+            batch = rows_to_add[start : start + batch_size]
+            embeddings = provider.encode_documents([row["text"] for row in batch])
+            add_rows(workspace.chroma_dir, workspace.chroma_collection, batch, embeddings)
+        log.info(
+            "semantic_index_updated",
+            extra={
+                "request_id": request_id,
+                "workspace_id": workspace.workspace_id,
+                "documents_added": len(rows_to_add),
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "embedding_model": model,
+            },
+        )
 
 
 def remove_staging_files(workspace: Workspace, dataset: dict) -> None:

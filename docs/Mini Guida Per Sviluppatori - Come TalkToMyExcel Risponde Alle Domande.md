@@ -183,10 +183,10 @@ Ogni route ha una catena di fallback.
 Esempio per `hybrid`:
 
 ```text
-hybrid -> semantic -> sql -> python
+hybrid -> sql -> python
 ```
 
-Se `hybrid` non trova righe o fallisce, il query engine prova la route successiva.
+Se `hybrid` fallisce tecnicamente o non è supportata, il query engine prova la route successiva. Se la query valida non trova righe, restituisce invece un risultato vuoto terminale.
 
 Ogni tentativo produce uno stato:
 

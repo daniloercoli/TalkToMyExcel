@@ -237,6 +237,18 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+#activeDataset {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#rebuildIndexBtn {
+  margin-top: 12px;
+  padding: 8px 14px;
+  font-size: .85rem;
+}
+
 .clear-btn {
   display: inline-flex;
   align-items: center;

@@ -50,7 +50,7 @@ def synthetic_payload():
                     {"role": "assistant", "content": "The closest cases are MX-1001 and MX-1003."},
                 ],
                 "question": "stampa i dettagli di quelle 2 richieste",
-                "expected_route": "python",
+                "expected_route": "sql",
             },
         ],
     }
@@ -66,7 +66,7 @@ def test_metadata_from_profile_keeps_semantic_columns():
 def test_evaluate_routes_uses_deterministic_router():
     results = evaluate_routes(synthetic_payload())
 
-    assert [result.actual_route for result in results] == ["count", "hybrid", "multi", "hybrid", "python"]
+    assert [result.actual_route for result in results] == ["count", "hybrid", "multi", "hybrid", "sql"]
     summary = summarize(results)
     assert summary["accuracy"] == 1.0
     assert summary["contextualized"] == 1

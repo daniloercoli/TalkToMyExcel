@@ -44,9 +44,9 @@ def profile_file(input_file: Path, output_dir: Path) -> dict:
     if suffix in {".xlsx", ".xls"}:
         sheets = pd.read_excel(input_file, sheet_name=None, dtype=object)
     elif suffix == ".csv":
-        sheets = {"Data": pd.read_csv(input_file, dtype=object)}
+        sheets = {"Data": read_delimited(input_file)}
     elif suffix == ".tsv":
-        sheets = {"Data": pd.read_csv(input_file, sep="\t", dtype=object)}
+        sheets = {"Data": read_delimited(input_file, sep="\t")}
     elif suffix == ".parquet":
         sheets = {"Data": pd.read_parquet(input_file)}
     else:
@@ -57,7 +57,7 @@ def profile_file(input_file: Path, output_dir: Path) -> dict:
         clean = frame.dropna(how="all").copy()
         clean.columns = unique_columns([str(col).strip() or f"column_{i + 1}" for i, col in enumerate(clean.columns)])
         csv_name = f"sheet_{index}.csv"
-        clean.to_csv(output_dir / csv_name, index=False)
+        clean.to_csv(output_dir / csv_name, index=False, encoding="utf-8")
         columns = column_profiles(clean)
         profiled.append(
             {
@@ -75,6 +75,13 @@ def profile_file(input_file: Path, output_dir: Path) -> dict:
         "sheets": profiled,
         "default_sheets": [sheet["name"] for sheet in profiled if sheet["rows"] > 0][:1],
     }
+
+
+def read_delimited(input_file: Path, **kwargs) -> pd.DataFrame:
+    try:
+        return pd.read_csv(input_file, dtype=object, encoding="utf-8-sig", **kwargs)
+    except UnicodeDecodeError:
+        return pd.read_csv(input_file, dtype=object, encoding="cp1252", **kwargs)
 
 
 def unique_columns(columns: list[str]) -> list[str]:

@@ -24,3 +24,18 @@ def test_suggest_semantic_columns_prefers_descriptive_text():
     ]
 
     assert worker.suggest_semantic_columns(columns) == ["Problem Description"]
+
+
+@pytest.mark.parametrize(("suffix", "separator"), [(".csv", ","), (".tsv", "\t")])
+def test_profile_file_normalizes_cp1252_delimited_files_to_utf8(tmp_path, suffix, separator):
+    pytest.importorskip("pandas")
+    worker = load_worker()
+    source = tmp_path / f"attività{suffix}"
+    output = tmp_path / "output"
+    output.mkdir()
+    source.write_bytes(f"Città{separator}Priorità\nForlì{separator}Alta\n".encode("cp1252"))
+
+    profile = worker.profile_file(source, output)
+
+    assert profile["sheets"][0]["preview"] == [{"Città": "Forlì", "Priorità": "Alta"}]
+    assert (output / "sheet_1.csv").read_text(encoding="utf-8") == "Città,Priorità\nForlì,Alta\n"

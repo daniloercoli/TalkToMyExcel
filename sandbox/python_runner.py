@@ -42,7 +42,7 @@ def main() -> int:
         }
 
     result_json.parent.mkdir(parents=True, exist_ok=True)
-    result_json.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    result_json.write_text(json.dumps(result, ensure_ascii=False, default=str), encoding="utf-8")
     return 0
 
 

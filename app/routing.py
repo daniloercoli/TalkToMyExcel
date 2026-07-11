@@ -38,16 +38,16 @@ ROUTE_TOOLS: dict[str, RouteTool] = {
         title="deterministic count summary",
         description="Cheap DuckDB summaries for broad row counts and status distributions.",
         use_when=(
-            "the user asks for total counts or open/closed/WIP distributions",
-            "there is no specific product, date, note, or similarity condition",
+            "the user asks for a global row count or status-only distribution",
+            "there is no customer, product, date, note, or similarity condition",
         ),
         avoid_when=(
             "the question needs grouping by arbitrary columns",
             "the question combines counts with notes, examples, or fuzzy matching",
         ),
         examples=(
-            "How many cases are open or closed?",
             "Quanti ticket abbiamo in totale?",
+            "How many cases do we have?",
         ),
         fallbacks=("count", "sql", "python", "semantic"),
     ),
@@ -121,7 +121,7 @@ ROUTE_TOOLS: dict[str, RouteTool] = {
             "Find open cases similar to motor vibration.",
             "Nei WIP Robot, quali note parlano di perdita idraulica?",
         ),
-        fallbacks=("hybrid", "semantic", "sql", "python"),
+        fallbacks=("hybrid", "sql", "python"),
     ),
     "multi": RouteTool(
         name="multi",
@@ -144,10 +144,10 @@ ROUTE_TOOLS: dict[str, RouteTool] = {
     "python": RouteTool(
         name="python",
         title="sandboxed pandas analysis",
-        description="Sandboxed Python for multi-step logic, cross-file comparisons, ratios, correlations, missing IDs, and row dumps.",
+        description="Sandboxed Python for multi-step logic, cross-file comparisons, ratios, correlations, and missing IDs.",
         use_when=(
             "the user explicitly asks for Python or CSV work",
-            "the question needs dataframe operations, custom calculations, comparisons, or all matching rows",
+            "the question needs dataframe operations, custom calculations, comparisons, or statistics",
         ),
         avoid_when=(
             "a cheap deterministic count or SQL query is sufficient",
@@ -184,6 +184,8 @@ class RoutePlan:
 
 def complete_plan(plan: RoutePlan, source: str = "") -> RoutePlan:
     candidates = tuple(dict.fromkeys((plan.route, *plan.candidates, *FALLBACKS.get(plan.route, ()))))
+    if plan.route == "hybrid":
+        candidates = tuple(route for route in candidates if route != "semantic")
     execution = "multi" if plan.route == "multi" else plan.execution
     return RoutePlan(
         route=plan.route,
@@ -257,10 +259,10 @@ FUZZY_SEMANTIC_WORDS = {
     "like this",
     "casi simili",
     "similar issues",
-    "note",
-    "notes",
-    "quali note",
-    "which notes",
+    "trova note",
+    "cerca note",
+    "find notes",
+    "search notes",
     "parlano di",
     "cita",
     "citano",
@@ -284,22 +286,33 @@ STRUCTURED_FILTER_WORDS = {
     "chiusi",
     "chiuse",
     "status",
+    "statuses",
     "state",
     "stato",
     "priorita",
     "priorità",
     "priority",
     "prodotto",
+    "prodotti",
     "product",
+    "products",
     "linea",
     "customer",
+    "customers",
+    "client",
+    "clients",
     "cliente",
+    "clienti",
     "data",
     "date",
     "serial",
     "matricola",
     "asset",
     "machine",
+}
+STATUS_DISTRIBUTION_WORDS = {
+    "open", "opened", "closed", "wip", "aperto", "aperta", "aperti", "aperte",
+    "chiuso", "chiusa", "chiusi", "chiuse", "status", "statuses", "state", "stato",
 }
 MULTI_INTENT_JOINERS = {" e ", " and ", " anche ", " also ", " oltre ", " together ", " insieme ", " poi "}
 EXPLICIT_GROUP_SQL_PHRASES = {
@@ -359,11 +372,15 @@ class DetailRequestStrategy(RouteStrategy):
             "show details",
             "print details",
             "list all",
+            "quali note",
+            "which notes",
+            "quali casi",
+            "which cases",
         ]
         return has_phrase(question, phrases) or has_phrase(question, {"stampa", "dettagli", "mostra", "elenca"})
 
     def plan(self, question: str, metadata: dict) -> RoutePlan:
-        return RoutePlan(route="python", reason="detail_request", candidates=("python", "sql", "semantic"))
+        return RoutePlan(route="sql", reason="detail_request", candidates=("sql", "python", "semantic"))
 
 
 class StatusIdStrategy(RouteStrategy):
@@ -373,7 +390,11 @@ class StatusIdStrategy(RouteStrategy):
     ID_WORDS = {"matricola", "serial", "serial number", "asset", "machine", "richiesta", "request", "ticket", "case"}
 
     def matches(self, question: str) -> bool:
-        return has_phrase(question, self.STATUS_WORDS) and has_phrase(question, self.ID_WORDS)
+        return (
+            not has_phrase(question, COUNT_INTENT_WORDS)
+            and has_phrase(question, self.STATUS_WORDS)
+            and has_phrase(question, self.ID_WORDS)
+        )
 
     def plan(self, question: str, metadata: dict) -> RoutePlan:
         return RoutePlan(route="status", reason="status_by_id", candidates=("status", "sql", "semantic", "python"))
@@ -401,10 +422,10 @@ class HybridStructuredSemanticStrategy(RouteStrategy):
 
     def matches(self, question: str) -> bool:
         low = question.lower()
-        return has_phrase(low, SEMANTIC_INTENT_WORDS) and has_phrase(low, STRUCTURED_FILTER_WORDS)
+        return has_phrase(low, FUZZY_SEMANTIC_WORDS) and has_phrase(low, STRUCTURED_FILTER_WORDS)
 
     def plan(self, question: str, metadata: dict) -> RoutePlan:
-        return RoutePlan(route="hybrid", reason="structured_semantic_search", candidates=("hybrid", "semantic", "sql", "python"))
+        return RoutePlan(route="hybrid", reason="structured_semantic_search", candidates=("hybrid", "sql", "python"))
 
 
 class ExplicitGroupBySQLStrategy(RouteStrategy):
@@ -447,7 +468,7 @@ class SQLRouteStrategy(RouteStrategy):
 
 
 class MultiColumnCountStrategy(RouteStrategy):
-    """Count with multiple column filters goes to python"""
+    """Grouped counts are relational aggregations handled by SQL."""
 
     COUNT_WORDS = {"how many", "count", "quanti", "quante", "numero", "conta"}
     GROUP_WORDS = {
@@ -468,7 +489,7 @@ class MultiColumnCountStrategy(RouteStrategy):
         return has_group and (has_count or "raggruppa" in low or "group" in low)
 
     def plan(self, question: str, metadata: dict) -> RoutePlan:
-        return RoutePlan(route="python", reason="multi_column_filter", candidates=("python", "sql", "semantic"))
+        return RoutePlan(route="sql", reason="grouped_count", candidates=("sql", "python", "semantic"))
 
 
 class PythonCalculationStrategy(RouteStrategy):
@@ -511,16 +532,26 @@ class SimpleCountStrategy(RouteStrategy):
     """Simple counts without filters"""
 
     COUNT_WORDS = {"how many", "count", "quanti", "quante", "numero", "conta"}
+    GLOBAL_WORDS = COUNT_WORDS | {
+        "a", "al", "all", "abbiamo", "are", "case", "cases", "casi", "caso", "ci", "complessivamente",
+        "con", "data", "dati", "dataset", "do", "file", "files", "hanno", "have", "how", "in", "many",
+        "momento", "nel", "numero",
+        "overall", "problem", "problems", "record", "records", "request", "requests", "richiesta",
+        "richieste", "righe", "row", "rows", "sono", "there", "ticket", "tickets", "total", "totale",
+        "and", "e", "o", "oppure", "or", "tutti", "we", "with", "workbook",
+    } | STATUS_DISTRIBUTION_WORDS
 
     def matches(self, question: str) -> bool:
         low = question.lower()
         if not has_phrase(low, self.COUNT_WORDS):
             return False
-        if "=" in low or has_phrase(low, {"where", "dove", "con stato", "with status", "priorita", "priorità", "priority"}):
+        if "=" in low or has_phrase(low, STRUCTURED_FILTER_WORDS - STATUS_DISTRIBUTION_WORDS):
             return False
         if has_phrase(low, {"dal", "in poi", "from", "after", "before", "prima", "dopo", "data", "date"}):
             return False
-        return not any(phrase in low for phrase in MultiColumnCountStrategy.GROUP_WORDS)
+        if any(phrase in low for phrase in MultiColumnCountStrategy.GROUP_WORDS):
+            return False
+        return set(re.findall(r"\w+", low)) <= self.GLOBAL_WORDS
 
     def plan(self, question: str, metadata: dict) -> RoutePlan:
         return RoutePlan(route="count", reason="simple_count", candidates=("count", "sql", "python", "semantic"))
@@ -549,16 +580,16 @@ class LLMRouterStrategy(RouteStrategy):
                 "   - Similar/fuzzy wording without a hard filter => primary semantic.\n"
                 "   - Similar/fuzzy wording with status/product/date/customer/priority filters => primary hybrid.\n"
                 "   - A question that asks for counts AND notes/examples/similar cases => primary multi.\n"
-                "   - Simple total/status count => primary count.\n"
+                "   - Simple total or status-only distribution => primary count.\n"
                 "   - Filters, exact values, SUM/AVG/MIN/MAX => primary sql.\n"
-                "   - Grouped or multi-column counts => primary python, with sql fallback.\n"
+                "   - Grouped or multi-column counts => primary sql, with python fallback.\n"
                 "   - Comparisons across files, missing IDs, ratios, correlations, custom dataframe work => primary python.\n"
                 "   - When uncertain between SQL and Python, choose SQL for relational aggregation and Python for multi-step analysis.\n"
                 "   - For route='multi', candidates are the subroutes to run after multi, usually ['sql','semantic'].\n"
 
                 "\n"
                 "Examples:\n"
-                "- 'count WIP by priority' -> python, candidates ['python','sql','semantic']\n"
+                "- 'count WIP by priority' -> sql, candidates ['sql','python','semantic']\n"
                 "- 'how many open cases do we have?' -> count, candidates ['count','sql','python','semantic']\n"
                 "- 'which IDs are in file A but not file B?' -> python, candidates ['python','sql','semantic']\n"
                 "- 'what's the status of serial 123' -> status, candidates ['status','sql','semantic','python']\n"
@@ -662,12 +693,12 @@ class QueryRouter:
                 ExplicitPythonStrategy(),      # User explicitly says "use python"
                 StatusIdStrategy(),            # Status + serial number lookup
                 MultiRouteStrategy(),          # Questions requiring multiple engines
-                HybridStructuredSemanticStrategy(),  # Structured filter plus semantic search
                 ExplicitGroupBySQLStrategy(),  # Explicit column distributions
-                SemanticSearchStrategy(),      # Similarity/fuzzy search
-                DetailRequestStrategy(),       # User asks for details/rows
                 PythonCalculationStrategy(),   # Complex calculations/comparisons
                 MultiColumnCountStrategy(),    # Grouped aggregates
+                HybridStructuredSemanticStrategy(),  # Structured filter plus semantic search
+                SemanticSearchStrategy(),      # Similarity/fuzzy search
+                DetailRequestStrategy(),       # User asks for details/rows
                 SimpleCountStrategy(),         # Deterministic count summaries
                 SQLRouteStrategy(),            # SQL-capable queries (filter/count/sum)
                 LLMRouterStrategy(),           # Intelligent fallback
@@ -678,6 +709,19 @@ class QueryRouter:
         for strategy in self.strategies:
             if strategy.matches(question):
                 plan = complete_plan(strategy.plan(question, metadata), source=type(strategy).__name__)
+                tables = metadata.get("tables") or []
+                if tables and not any(table.get("semantic_columns") for table in tables):
+                    candidates = tuple(route for route in plan.ordered_routes() if route not in {"semantic", "hybrid"})
+                    route = plan.route if plan.route not in {"semantic", "hybrid"} else candidates[0]
+                    rerouted = plan.route in {"semantic", "hybrid"}
+                    plan = RoutePlan(
+                        route=route,
+                        reason=f"{plan.reason}:semantic_unavailable" if rerouted else plan.reason,
+                        confidence=plan.confidence,
+                        candidates=candidates,
+                        source=plan.source,
+                        execution=plan.execution,
+                    )
                 log.info(
                     "route_planned",
                     extra={

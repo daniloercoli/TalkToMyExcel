@@ -19,6 +19,11 @@ def reset_collection(path: Path, collection_name: str) -> None:
     client.get_or_create_collection(collection_name)
 
 
+def delete_by_workbook_id(path: Path, collection_name: str, workbook_id: str) -> None:
+    collection = chroma_client(path).get_or_create_collection(collection_name)
+    collection.delete(where={"workbook_id": workbook_id})
+
+
 def add_rows(path: Path, collection_name: str, rows: list[dict], embeddings: list[list[float]]) -> None:
     if not rows:
         return

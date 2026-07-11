@@ -51,7 +51,7 @@ class TestDetailRequestStrategy:
     def test_stampa_dettagli(self):
         strategy = DetailRequestStrategy()
         assert strategy.matches("stampa i dettagli") is True
-        assert strategy.plan("stampa dettagli", {}) == RoutePlan(route="python", reason="detail_request")
+        assert strategy.plan("stampa dettagli", {}) == RoutePlan(route="sql", reason="detail_request")
 
     def test_mostra_righe(self):
         strategy = DetailRequestStrategy()
@@ -64,6 +64,9 @@ class TestDetailRequestStrategy:
     def test_list_all(self):
         strategy = DetailRequestStrategy()
         assert strategy.matches("list all matching rows") is True
+
+    def test_plain_note_listing_is_a_detail_request(self):
+        assert QueryRouter().plan("Mostra le note", {}).route == "sql"
 
 
 class TestStatusIdStrategy:
@@ -99,10 +102,9 @@ class TestSQLRouteStrategy:
         strategy = SQLRouteStrategy()
         assert strategy.matches("qual è la media degli interventi") is True
 
-    def test_groupby_goes_to_python(self):
+    def test_groupby_is_sql_capable(self):
         strategy = SQLRouteStrategy()
-        # SQLRouteStrategy is broad, but MultiColumnCountStrategy (which comes later/before)
-        # or the router's ordering handles the specific "group by" logic.
+        # The router's more specific grouped-count strategy wins first.
         # The strategy itself matches if it's SQL-like.
         assert strategy.matches("quanti per priorita") is True 
         # Note: The Router's list order decides who wins.
@@ -173,7 +175,7 @@ class TestQueryRouterIntegration:
         """Detail requests bypass LLM"""
         router = QueryRouter()
         plan = router.plan("stampa i dettagli di quelle righe", {})
-        assert plan.route == "python"
+        assert plan.route == "sql"
         assert plan.reason == "detail_request"
 
     def test_status_lookup_fast_path(self):
@@ -195,6 +197,30 @@ class TestQueryRouterIntegration:
         assert plan.route == "count"
         assert plan.reason == "simple_count"
         assert plan.ordered_routes() == ("count", "sql", "python", "semantic")
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "How many open cases?",
+            "Quanti ticket WIP abbiamo?",
+            "Quante richieste hanno stato closed?",
+        ],
+    )
+    def test_status_only_counts_stay_deterministic(self, question):
+        assert QueryRouter().plan(question, {}).route == "count"
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Quanti ticket del cliente Acme?",
+            "How many Robot cases?",
+            "Quanti casi chiusi del prodotto Robot?",
+            "How many open cases for customer Acme?",
+            "Quanti ticket ci sono dopo il 1 gennaio 2025?",
+        ],
+    )
+    def test_filtered_counts_go_to_sql(self, question):
+        assert QueryRouter().plan(question, {}).route == "sql"
 
     def test_count_with_problem_word_stays_count(self):
         router = QueryRouter()
@@ -225,18 +251,18 @@ class TestQueryRouterIntegration:
         plan = router.plan('Qual e la richiesta piu recente secondo "DATA PRESA CARICO UT"?', {})
         assert plan.route == "sql"
 
-    def test_multi_column_count_goes_to_heuristic(self):
-        """Multi-column questions are handled by MultiColumnCountStrategy, not LLM"""
+    def test_grouped_count_goes_to_sql(self):
+        """Grouped counts use relational aggregation, not Python."""
         router = QueryRouter()
         plan = router.plan("conta quanti WIP abbiamo per priorita", {})
-        assert plan.route == "python"
-        assert plan.reason == "multi_column_filter"
+        assert plan.route == "sql"
+        assert plan.reason == "grouped_count"
 
     def test_group_by_llm_routing(self):
         """Group by questions go to MultiColumnCountStrategy"""
         router = QueryRouter()
         plan = router.plan("raggruppa per priorita e stato", {})
-        assert plan.route == "python"
+        assert plan.route == "sql"
 
     def test_complex_filter_llm_routing(self):
         """Complex filter with groupby goes to python, simple filter goes to DuckDB"""
@@ -246,15 +272,15 @@ class TestQueryRouterIntegration:
         assert plan.route == "sql"
         plan = router.plan("conta quanti WIP con priorità HIGH", {})
         assert plan.route == "sql"
-        # With groupby → python
+        # With groupby → SQL
         plan = router.plan("conta WIP per priorita", {})
-        assert plan.route == "python"
+        assert plan.route == "sql"
 
     def test_structured_semantic_goes_to_hybrid(self):
         router = QueryRouter()
         plan = router.plan("Find open cases similar to motor vibration", {})
         assert plan.route == "hybrid"
-        assert plan.ordered_routes() == ("hybrid", "semantic", "sql", "python")
+        assert plan.ordered_routes() == ("hybrid", "sql", "python")
 
         plan = router.plan('Tra le richieste con "STATO" = "NEW", quali citano "macchina"?', {})
         assert plan.route == "hybrid"
@@ -271,6 +297,25 @@ class TestQueryRouterIntegration:
         plan = router.plan('Raggruppa le richieste per "LINEA PRODOTTO".', {})
         assert plan.route == "sql"
 
+    def test_calculation_over_notes_is_not_treated_as_semantic_search(self):
+        router = QueryRouter()
+        assert router.plan("Confronta le note tra i due file", {}).route == "python"
+        assert router.plan("Calcola la percentuale di note mancanti", {}).route == "python"
+
+    def test_semantic_route_is_disabled_when_index_has_no_columns(self):
+        metadata = {"tables": [{"columns": ["note"], "semantic_columns": []}]}
+        plan = QueryRouter().plan("Trova note simili a una perdita", metadata)
+        assert plan.route == "sql"
+        assert plan.ordered_routes() == ("sql", "python")
+        assert plan.reason.endswith("semantic_unavailable")
+
+    def test_empty_metadata_keeps_semantic_unit_test_behavior(self):
+        assert QueryRouter().plan("Trova note simili a una perdita", {}).route == "semantic"
+
+    def test_any_semantic_column_keeps_semantic_capability(self):
+        metadata = {"tables": [{"columns": ["note"], "semantic_columns": ["note"]}]}
+        assert QueryRouter().plan("Trova note simili a una perdita", metadata).route == "semantic"
+
 
 class TestRealWorldQuestions:
     """Test actual questions from the chat log that were problematic before"""
@@ -280,11 +325,11 @@ class TestRealWorldQuestions:
         
         This was the original question that failed - it went to count route
         and returned only aggregates, not the cross-filtered data.
-        Now LLM should route it to python.
+        It should use a SQL GROUP BY.
         """
         router = QueryRouter()
         plan = router.plan("conta quanti WIP abbiamo al momento, e raggruppa per priorita", {})
-        assert plan.route == "python", f"Multi-column question must go to python, got {plan.route}"
+        assert plan.route == "sql", f"Grouped question must go to SQL, got {plan.route}"
         assert "multi" in plan.reason.lower() or "group" in plan.reason.lower() or "filter" in plan.reason.lower()
 
     def test_use_python_or_db(self):
@@ -304,7 +349,7 @@ class TestRealWorldQuestions:
         """
         router = QueryRouter()
         plan = router.plan("stampa i dettagli di quelle 2 richieste", {})
-        assert plan.route == "python"
+        assert plan.route == "sql"
         assert plan.reason == "detail_request"
 
     def test_must_use_python(self):
@@ -328,7 +373,7 @@ class TestRealWorldQuestions:
         ]
         for q in questions:
             plan = router.plan(q, {})
-            assert plan.route == "python", f"Question '{q}' should route to python, got {plan.route}"
+            assert plan.route == "sql", f"Question '{q}' should route to SQL, got {plan.route}"
 
 
 class TestBackwardCompatibility:

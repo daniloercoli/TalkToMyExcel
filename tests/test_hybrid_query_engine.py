@@ -24,10 +24,23 @@ class CapturingEmbedding:
 class CapturingLLM:
     def __init__(self):
         self.users = []
+        self.systems = []
 
     def generate(self, system, user, model, temperature=0.2):
+        self.systems.append(system)
         self.users.append(user)
         return json.dumps({"sql": 'SELECT count(*) FROM "cases"'})
+
+
+class PythonLLM(CapturingLLM):
+    def __init__(self, code='answer = {"città": "Forlì"}'):
+        super().__init__()
+        self.code = code
+
+    def generate(self, system, user, model, temperature=0.2):
+        self.systems.append(system)
+        self.users.append(user)
+        return json.dumps({"code": self.code})
 
 
 def make_workspace(tmp_path):
@@ -124,6 +137,68 @@ def test_sql_generators_include_recent_conversation_context(monkeypatch, tmp_pat
         assert "Question:\nsame, but only open" in user
 
 
+def test_python_generator_includes_recent_context_and_unicode_rules(monkeypatch, tmp_path):
+    _workspace, metadata = make_workspace(tmp_path)
+    llm = PythonLLM()
+    history = [
+        {"role": "user", "content": "Trova le richieste di Forlì"},
+        {"role": "assistant", "content": "Ho trovato MX-1001 e MX-1003."},
+    ]
+    monkeypatch.setattr(query_engine, "load_settings", lambda: {})
+    monkeypatch.setattr(query_engine, "get_llm_provider", lambda _settings: (llm, "fake"))
+
+    code = query_engine.generate_python_code("usa Python per mostrare quelle", metadata, conversation_history=history)
+
+    assert "Forlì" in llm.users[0]
+    assert "encoding='utf-8'" in llm.systems[0]
+    assert "double-quoted Python string literals" in llm.systems[0]
+    assert "Forlì" in code
+
+
+def test_python_generator_rejects_invalid_quoting_before_sandbox(monkeypatch, tmp_path):
+    _workspace, metadata = make_workspace(tmp_path)
+    llm = PythonLLM("answer = 'L'unità'")
+    monkeypatch.setattr(query_engine, "load_settings", lambda: {})
+    monkeypatch.setattr(query_engine, "get_llm_provider", lambda _settings: (llm, "fake"))
+
+    try:
+        query_engine.generate_python_code("filtra L'unità", metadata)
+    except ValueError as exc:
+        assert "Generated Python syntax error" in str(exc)
+    else:
+        raise AssertionError("Invalid generated Python should fail before Docker")
+
+
+def test_sql_external_file_access_is_disabled(monkeypatch, tmp_path):
+    workspace, metadata = make_workspace(tmp_path)
+    monkeypatch.setattr(
+        query_engine,
+        "generate_sql_query",
+        lambda *_args, **_kwargs: "SELECT * FROM read_text('/etc/hosts')",
+    )
+
+    result = query_engine.sql_answer(workspace, metadata, "read a host file", "", None)
+
+    assert result["_routing_status"] == "failed"
+    assert "external" in result["_routing_detail"].lower() or "file system" in result["_routing_detail"].lower()
+
+
+def test_empty_sql_result_is_terminal_and_does_not_fallback(monkeypatch, tmp_path):
+    workspace, metadata = make_workspace(tmp_path)
+    monkeypatch.setattr(
+        query_engine,
+        "generate_sql_query",
+        lambda *_args, **_kwargs: 'SELECT * FROM "cases" WHERE matricola = \'missing\'',
+    )
+    plan = RoutePlan(route="sql", reason="exact_filter", candidates=("sql", "semantic"))
+
+    result = query_engine.try_route(workspace, metadata, "missing", plan, "", None)
+
+    assert result["route"] == "sql"
+    assert result["answer"] == query_engine.NO_MATCH_ANSWER
+    assert [attempt["route"] for attempt in result["debug"]["route_attempts"]] == ["sql"]
+
+
 def test_answer_question_routes_followup_with_recent_context(monkeypatch, tmp_path):
     workspace, metadata = make_workspace(tmp_path)
     captured = {}
@@ -148,7 +223,7 @@ def test_answer_question_routes_followup_with_recent_context(monkeypatch, tmp_pa
     assert result["debug"]["route_plan"]["source"] == "HybridStructuredSemanticStrategy"
 
 
-def test_detail_followup_keeps_python_route(monkeypatch, tmp_path):
+def test_detail_followup_uses_sql_with_conversation_context(monkeypatch, tmp_path):
     workspace, metadata = make_workspace(tmp_path)
     captured = {}
     history = [
@@ -166,7 +241,7 @@ def test_detail_followup_keeps_python_route(monkeypatch, tmp_path):
 
     query_engine.answer_question(workspace, "stampa i dettagli di quelle 2 richieste", conversation_history=history)
 
-    assert captured["route"] == "python"
+    assert captured["route"] == "sql"
 
 
 def test_semantic_context_embeds_followup_with_recent_context(monkeypatch, tmp_path):
@@ -219,3 +294,9 @@ def test_multi_answer_synthesizes_successful_subroutes(monkeypatch):
     assert result["route"] == "multi"
     assert result["sources"] == [{"row_id": "cases_1", "file": "cases.xlsx", "sheet": "Cases", "row": 1}]
     assert result["debug"]["multi_routes"] == ["sql", "semantic"]
+
+
+def test_compact_context_discloses_truncation():
+    text = query_engine.compact_context({"rows": [{"result": 1}], "debug": {"truncated": True}})
+
+    assert "more than 200 rows" in text

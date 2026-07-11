@@ -28,6 +28,7 @@ const chatForm = document.getElementById("chatForm");
 const questionInput = document.getElementById("questionInput");
 const contextUsage = document.getElementById("contextUsage");
 const clearSession = document.getElementById("clearSession");
+const rebuildIndexBtn = document.getElementById("rebuildIndexBtn");
 async function refreshContext() {
   if (!contextUsage) return;
   try {
@@ -57,6 +58,22 @@ clearSession?.addEventListener("click", async () => {
     alert(error.message);
   } finally {
     clearSession.disabled = false;
+  }
+});
+rebuildIndexBtn?.addEventListener("click", async () => {
+  try {
+    rebuildIndexBtn.disabled = true;
+    rebuildIndexBtn.textContent = "Rebuilding...";
+    const response = await fetch("/api/semantic-index/rebuild", {method: "POST"});
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Rebuild failed");
+    alert("Semantic index rebuilt successfully");
+    refreshContext();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    rebuildIndexBtn.disabled = false;
+    rebuildIndexBtn.textContent = "Rebuild Search Index";
   }
 });
 const dialogPresets = {
@@ -295,6 +312,7 @@ function addMessage(text, kind) {
 function renderActiveDataset(active) {
   const datasets = active?.datasets || [];
   activeDataset.dataset.hasActive = datasets.length ? "1" : "0";
+  rebuildIndexBtn.hidden = !datasets.length;
   if (!datasets.length) {
     activeDataset.innerHTML = `
       <span class="dataset-dot muted-dot"></span>

@@ -11,7 +11,7 @@ from app.stores import Workspace
 from app.vector_store import query_rows
 from app.workbook import active_workbook, fetch_rows, quote_ident
 
-OPEN_WORDS = {"open", "opened", "aperto", "aperta", "aperti", "aperte"}
+OPEN_WORDS = {"open", "aperto", "aperta", "aperti", "aperte"}
 STATUS_WORDS = {"status", "state", "stato"}
 ID_WORDS = {"matricola", "serial", "serial number", "asset", "machine", "richiesta", "request", "ticket", "case"}
 FOLLOWUP_WORDS = {
@@ -51,6 +51,15 @@ MAX_INLINE_CONTEXT_MESSAGES = 2
 MAX_INLINE_CONTEXT_CHARS = 2_000
 CHARS_PER_TOKEN = 4
 ROUTER = QueryRouter()
+NO_MATCH_ANSWER = "No matching rows were found in the active workspace."
+
+
+def query_connection(workspace: Workspace):
+    import duckdb
+
+    conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
+    conn.execute("SET enable_external_access = false")
+    return conn
 
 
 def classify(question: str) -> str:
@@ -257,6 +266,7 @@ def run_route(workspace, metadata, question, route, route_plan, request_id, conv
                 question,
                 {"route": "python", "reason": route_plan.reason},
                 request_id=request_id,
+                conversation_history=conversation_history,
             )
             if result.get("debug", {}).get("execution_status") != "ok":
                 result["_routing_status"] = "failed"
@@ -280,14 +290,14 @@ def run_route(workspace, metadata, question, route, route_plan, request_id, conv
 
 
 def answer_from_context(question: str, context: dict, route: str, conversation_history: list[dict] | None = None) -> dict:
+    if context.get("_routing_status"):
+        return route_failed(route, str(context.get("_routing_detail") or context["_routing_status"]))
     if not context.get("rows"):
         return {
-            "answer": "",
+            "answer": NO_MATCH_ANSWER,
             "route": route,
             "sources": context.get("sources", []),
             "debug": context.get("debug", {}),
-            "_routing_status": "no_results",
-            "_routing_detail": "no_rows",
         }
     return llm_answer(question, context, route, conversation_history)
 
@@ -354,8 +364,6 @@ def route_failed(route: str, detail: str) -> dict:
 
 
 def sql_answer(workspace: Workspace, metadata: dict, question: str, request_id: str, conversation_history: list[dict] | None) -> dict:
-    import duckdb
-
     sql = generate_sql_query(question, metadata, conversation_history)
     if not sql:
         return route_failed("sql", "sql_generation_empty")
@@ -364,7 +372,7 @@ def sql_answer(workspace: Workspace, metadata: dict, question: str, request_id: 
     except ValueError as exc:
         return route_failed("sql", str(exc))
 
-    conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
+    conn = query_connection(workspace)
     try:
         log.info("sql_execution", extra={"request_id": request_id, "sql": sql[:2000]})
         cursor = conn.execute(sql)
@@ -380,12 +388,10 @@ def sql_answer(workspace: Workspace, metadata: dict, question: str, request_id: 
     rows_raw = rows_raw[:MAX_SQL_ROWS]
     if not rows_raw:
         return {
-            "answer": "",
+            "answer": NO_MATCH_ANSWER,
             "route": "sql",
             "sources": [],
             "debug": {"sql": sql, "rows": 0},
-            "_routing_status": "no_results",
-            "_routing_detail": "sql_returned_no_rows",
         }
 
     if len(rows_raw) == 1 and len(rows_raw[0]) == 1:
@@ -403,24 +409,26 @@ def sql_answer(workspace: Workspace, metadata: dict, question: str, request_id: 
 
 
 def validate_select_sql(sql: str) -> str:
+    import duckdb
+
     cleaned = extract_fenced_code(sql) or sql
-    cleaned = cleaned.strip().rstrip(";").strip()
+    cleaned = cleaned.strip()
     if not cleaned:
         raise ValueError("sql_generation_empty")
-    if ";" in cleaned:
+    try:
+        statements = duckdb.extract_statements(cleaned)
+    except Exception as exc:
+        raise ValueError("sql_parse_failed") from exc
+    if len(statements) != 1:
         raise ValueError("sql_multiple_statements_not_allowed")
-    if not re.match(r"^(select|with)\b", cleaned, re.I):
+    statement = statements[0]
+    if statement.type != duckdb.StatementType.SELECT:
         raise ValueError("sql_must_be_select")
-    blocked = r"\b(insert|update|delete|drop|alter|create|attach|copy|pragma|call|install|load|export|import)\b"
-    if re.search(blocked, cleaned, re.I):
-        raise ValueError("sql_contains_blocked_keyword")
-    return cleaned
+    return statement.query.strip().rstrip(";").strip()
 
 
 def count_context(workspace: Workspace, metadata: dict, question: str) -> dict:
-    import duckdb
-
-    conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
+    conn = query_connection(workspace)
     rows = []
     for table in metadata["tables"]:
         status_col = find_column(table["columns"], STATUS_WORDS)
@@ -451,16 +459,16 @@ def count_context(workspace: Workspace, metadata: dict, question: str) -> dict:
 
 
 def status_context(workspace: Workspace, metadata: dict, question: str) -> dict:
-    import duckdb
-
-    conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
+    conn = query_connection(workspace)
     tokens = query_tokens(question)
     rows = []
+    capable_tables = 0
     for table in metadata["tables"]:
         id_col = find_column(table["columns"], ID_WORDS)
         status_col = find_column(table["columns"], STATUS_WORDS)
         if not id_col or not status_col:
             continue
+        capable_tables += 1
         for token in tokens:
             result = conn.execute(
                 f"""
@@ -484,7 +492,15 @@ def status_context(workspace: Workspace, metadata: dict, question: str) -> dict:
                 for row_id, sheet, original_row_number, serial, status in result
             )
     conn.close()
-    return {"kind": "status", "rows": rows, "sources": source_rows(rows)}
+    context = {
+        "kind": "status",
+        "rows": rows,
+        "sources": source_rows(rows),
+        "debug": {"capable_tables": capable_tables},
+    }
+    if not capable_tables:
+        context.update(_routing_status="unsupported", _routing_detail="status_columns_not_found")
+    return context
 
 
 def hybrid_semantic_context(
@@ -496,7 +512,14 @@ def hybrid_semantic_context(
 ) -> dict:
     filter_sql = generate_hybrid_filter_sql(question, metadata, conversation_history)
     if not filter_sql:
-        return {"kind": "hybrid", "rows": [], "sources": [], "debug": {"hybrid_filter": "empty"}}
+        return {
+            "kind": "hybrid",
+            "rows": [],
+            "sources": [],
+            "debug": {"hybrid_filter": "empty"},
+            "_routing_status": "unsupported",
+            "_routing_detail": "hybrid_filter_generation_empty",
+        }
     try:
         filter_sql = validate_select_sql(filter_sql)
     except ValueError as exc:
@@ -505,6 +528,8 @@ def hybrid_semantic_context(
             "rows": [],
             "sources": [],
             "debug": {"hybrid_filter_sql": filter_sql, "error": str(exc)},
+            "_routing_status": "failed",
+            "_routing_detail": str(exc),
         }
 
     row_ids, truncated = execute_row_id_sql(workspace, filter_sql, request_id)
@@ -530,9 +555,7 @@ def hybrid_semantic_context(
 
 
 def execute_row_id_sql(workspace: Workspace, sql: str, request_id: str = "") -> tuple[list[str], bool]:
-    import duckdb
-
-    conn = duckdb.connect(str(workspace.duckdb_path), read_only=True)
+    conn = query_connection(workspace)
     try:
         log.info("hybrid_filter_sql_execution", extra={"request_id": request_id, "sql": sql[:2000]})
         cursor = conn.execute(sql)
@@ -586,13 +609,20 @@ def semantic_context(
     }
 
 
-def python_answer(workspace: Workspace, metadata: dict, question: str, route_plan: dict, request_id: str = "") -> dict:
+def python_answer(
+    workspace: Workspace,
+    metadata: dict,
+    question: str,
+    route_plan: dict,
+    request_id: str = "",
+    conversation_history: list[dict] | None = None,
+) -> dict:
     max_attempts = 2
     last_error = None
     
     for attempt in range(max_attempts):
         try:
-            code = generate_python_code(question, metadata, last_error)
+            code = generate_python_code(question, metadata, last_error, conversation_history)
             log.info(
                 "python_code_generated",
                 extra={
@@ -669,40 +699,44 @@ def python_answer(workspace: Workspace, metadata: dict, question: str, route_pla
     return {"answer": final_python_answer(question, result), "route": "python", "sources": [], "debug": debug}
 
 
-def generate_python_code(question: str, metadata: dict, previous_error: str | None = None) -> str:
+def generate_python_code(
+    question: str,
+    metadata: dict,
+    previous_error: str | None = None,
+    conversation_history: list[dict] | None = None,
+) -> str:
     settings = load_settings()
     llm, model = get_llm_provider(settings)
     system = (
         "You write Python for a sandboxed spreadsheet analysis. "
         "Return JSON only: {\"code\": \"...\"}. "
         "The code may use pandas and the standard library. "
-        "CRITICAL: Read /input/manifest.json first to get the list of CSV files. "
-        "Then read data using pd.read_csv('/input/<filename>', encoding='utf-8') where filename comes from manifest['tables'][i]['csv']. "
-        "If utf-8 fails, try encoding='latin-1'. "
+        "CRITICAL: Read /input/manifest.json with encoding='utf-8' first to get the list of CSV files. "
+        "All exported CSV files are UTF-8; read them with encoding='utf-8' using the filename from manifest['tables'][i]['csv']. "
         "CRITICAL: Do NOT use on_error, on_bad_lines, or any other unsupported parameters. "
         "NEVER use pd.read_excel or read any .xlsx files - only CSV files exist in /input. "
-        "CRITICAL: When referencing column names in Python strings, always escape apostrophes: use \"column['name']\" or double quotes \"column'name\". "
+        "CRITICAL: Use double-quoted Python string literals for every column name, sheet, filename, and filter value. "
+        "Escape embedded double quotes and backslashes; never place unescaped workbook or user text in generated source. "
         "CRITICAL: NEVER limit the number of rows in your results. Do NOT use .head(), .tail(), or LIMIT. "
         "Process ALL rows from the CSV file. If counting, return the total count. If filtering, return all matching rows. "
         "Examples:\n"
-        "  df[df['PRIORITA\\''] == 'CRITICAL']  # apostrophe in column name - returns ALL matching rows\n"
-        "  df[df['LINEA PRODOTTO'] == 'Robot']  # space in column name - returns ALL matching rows\n"
-        "  df[(df['PRIORITA\\''] == 'CRITICAL') & (df['LINEA PRODOTTO'] == 'Robot')].shape[0]  # combined filter - count ALL\n"
-        "  df.groupby('PRIORITA\\'').size().to_dict()  # group by - ALL groups\n"
+        "  df[df[\"PRIORITA'\"] == \"CRITICAL\"]  # apostrophe in column name - returns ALL matching rows\n"
+        "  df[df[\"LINEA PRODOTTO\"] == \"Robot\"]  # space in column name - returns ALL matching rows\n"
+        "  df[(df[\"PRIORITA'\"] == \"CRITICAL\") & (df[\"LINEA PRODOTTO\"] == \"Robot\")].shape[0]\n"
+        "  df.groupby(\"PRIORITA'\").size().to_dict()  # group by - ALL groups\n"
         "Example pattern:\n"
         "  import json, pandas as pd\n"
-        "  with open('/input/manifest.json') as f: manifest = json.load(f)\n"
+        "  with open('/input/manifest.json', encoding='utf-8') as f: manifest = json.load(f)\n"
         "  csv_file = f\"/input/{manifest['tables'][0]['csv']}\"\n"
-        "  try: df = pd.read_csv(csv_file, encoding='utf-8')\n"
-        "  except: df = pd.read_csv(csv_file, encoding='latin-1')\n"
-        "  filtered = df[(df['PRIORITA\\''] == 'CRITICAL') & (df['LINEA PRODOTTO'] == 'Robot')]\n"
+        "  df = pd.read_csv(csv_file, encoding='utf-8')\n"
+        "  filtered = df[(df[\"PRIORITA'\"] == \"CRITICAL\") & (df[\"LINEA PRODOTTO\"] == \"Robot\")]\n"
         "  answer = filtered.shape[0]  # count ALL matching rows, not just first 6\n"
         "Use the manifest dataset filenames when the question compares multiple uploaded files. "
         "Do not access network resources. Do not read paths outside /input or write outside /output. "
         "Set a variable named answer to a concise JSON-serializable result. "
         "Do not print prose as the final answer; store the final result in answer."
     )
-    user = f"Question:\n{question}\n\nWorkbook:\n{metadata_summary(metadata)}"
+    user = question_prompt(question, metadata, conversation_history)
     if previous_error:
         user += f"\n\nPREVIOUS ERROR - Fix this syntax/runtime error:\n{previous_error}"
     raw = llm.generate(system, user, model=model, temperature=0.0)
@@ -717,6 +751,10 @@ def generate_python_code(question: str, metadata: dict, previous_error: str | No
         raise ValueError("The model did not return Python code")
     if len(code) > 20000:
         raise ValueError("Generated code is too large")
+    try:
+        compile(code, "<generated-analysis>", "exec")
+    except SyntaxError as exc:
+        raise ValueError(f"Generated Python syntax error: {exc.msg} at line {exc.lineno}") from exc
     return code
 
 
@@ -793,6 +831,13 @@ def generate_with_optional_messages(llm, system: str, user: str, *, model: str, 
 
 def compact_context(context: dict) -> str:
     lines = []
+    debug = context.get("debug", {})
+    if debug.get("truncated"):
+        lines.append(f"[Query returned more than {MAX_SQL_ROWS} rows and was capped.] ")
+    if debug.get("filter_truncated"):
+        lines.append(f"[Hybrid candidate set truncated to {MAX_HYBRID_FILTER_ROWS} rows.] ")
+    if len(context["rows"]) > 20:
+        lines.append(f"[Only the first 20 of {len(context['rows'])} retained rows are shown for synthesis.] ")
     for index, row in enumerate(context["rows"][:20], start=1):
         items = [f"{key}={value}" for key, value in row.items() if value not in (None, "")]
         lines.append(f"[{index}] " + "; ".join(items)[:1500])
@@ -883,14 +928,13 @@ def find_column(columns: list[str], hints: set[str]) -> str | None:
 
 
 def query_tokens(question: str) -> list[str]:
-    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{2,}", question)
+    words = re.findall(r"[^\W_][\w-]{2,}", question, re.UNICODE)
     stop = STATUS_WORDS | ID_WORDS | OPEN_WORDS | {"what", "which", "qual", "quale", "the", "for", "con"}
     return [word for word in words if word.lower() not in stop]
 
 
 def wants_open(question: str) -> bool:
-    low = question.lower()
-    return any(word in low for word in OPEN_WORDS)
+    return has_any_phrase(question, OPEN_WORDS)
 
 
 def row_has_open_status(row: dict) -> bool:

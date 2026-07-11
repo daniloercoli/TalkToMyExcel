@@ -56,7 +56,7 @@ In short: the router decides where to go; the query engine does the work and che
 | `semantic` | Fuzzy search over semantic columns such as problem descriptions, notes, checks, and solutions. |
 | `hybrid` | SQL structured filtering first, then semantic ranking inside the filtered subset. |
 | `multi` | Multi-intent questions, such as a count plus examples or relevant notes. |
-| `python` | Sandboxed pandas analysis: cross-file comparisons, missing IDs, ratios, custom calculations, and row dumps. |
+| `python` | Sandboxed pandas analysis: cross-file comparisons, missing IDs, ratios, correlations, and custom calculations. |
 
 ## Routing Strategy
 
@@ -74,7 +74,7 @@ Examples of deterministic choices:
 - count plus notes, examples, or similar cases -> `multi`
 - structured filter plus fuzzy text -> `hybrid`
 - similar text, notes mentioning something, similar symptoms -> `semantic`
-- row details or row listing -> `python`
+- row details or row listing -> `sql`
 - comparisons, differences, missing values, ratios, correlations -> `python`
 - "for each value of X" or explicit group-by -> `sql`
 - simple broad count -> `count`
@@ -100,7 +100,7 @@ This distinction helps after-sales users: simple questions stay immediate, while
 
 ## Fallbacks
 
-Each route has an ordered candidate chain. If the first route fails, returns no rows, or cannot generate a usable answer, the query engine tries the next candidate.
+Each route has an ordered candidate chain. The query engine tries the next candidate only after a technical failure or an unsupported route; zero rows is a valid terminal result.
 
 | Primary route | Candidate chain |
 | --- | --- |
@@ -108,7 +108,7 @@ Each route has an ordered candidate chain. If the first route fails, returns no 
 | `sql` | `sql -> python -> semantic` |
 | `status` | `status -> sql -> semantic -> python` |
 | `semantic` | `semantic -> sql -> python` |
-| `hybrid` | `hybrid -> semantic -> sql -> python` |
+| `hybrid` | `hybrid -> sql -> python` |
 | `multi` | `multi -> sql -> semantic -> python` |
 | `python` | `python -> sql -> semantic` |
 

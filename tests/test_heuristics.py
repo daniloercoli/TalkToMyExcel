@@ -1,5 +1,5 @@
 from app import query_engine
-from app.query_engine import classify, query_tokens, validate_select_sql
+from app.query_engine import classify, query_tokens, validate_select_sql, wants_open
 from app.workbook import table_name
 
 
@@ -18,6 +18,13 @@ def test_classify_routes_counts_before_semantic():
 
 def test_query_tokens_keeps_likely_identifiers():
     assert "ABC-123" in query_tokens("What is the status for serial ABC-123?")
+    assert "CAFÉ-123" in query_tokens("Qual è lo stato della matricola CAFÉ-123?")
+
+
+def test_open_filter_only_matches_current_status():
+    assert wants_open("Find currently open cases similar to vibration") is True
+    assert wants_open("Find cases opened after June 1 similar to vibration") is False
+    assert wants_open("Find reopened cases similar to vibration") is False
 
 
 def test_plan_route_can_promote_ambiguous_questions_to_python(monkeypatch):
@@ -44,3 +51,14 @@ def test_validate_select_sql_blocks_mutating_sql():
         assert str(exc) == "sql_must_be_select"
     else:
         raise AssertionError("DROP TABLE should not be accepted")
+
+
+def test_validate_select_sql_parses_instead_of_blocking_safe_literals():
+    assert validate_select_sql("SELECT 'LOAD' AS status") == "SELECT 'LOAD' AS status"
+
+    try:
+        validate_select_sql("SELECT 1; SELECT 2")
+    except ValueError as exc:
+        assert str(exc) == "sql_multiple_statements_not_allowed"
+    else:
+        raise AssertionError("Multiple SELECT statements should not be accepted")
