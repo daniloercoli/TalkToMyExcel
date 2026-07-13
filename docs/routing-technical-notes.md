@@ -18,7 +18,8 @@ TalkToMyExcel non dipende da LlamaIndex. Il progetto prende ispirazione da alcun
 - Il router restituisce un `RoutePlan`; il query engine si occupa di validazione ed esecuzione.
 - `hybrid` implementa prima filtro strutturato, poi retrieval semantico sul set filtrato di `row_id`.
 - `multi` esegue più subroute e sintetizza i risultati riusciti.
-- I fallback sono guidati dall'evidenza: tentativi `no_results` o `failed` passano al candidato successivo.
+- I fallback coprono errori tecnici o route non supportate; un risultato valido con zero righe è terminale e non viene reinterpretato da un'altra route.
+- Le domande di follow-up vengono contestualizzate con l'ultimo scambio prima del routing, senza cambiare il testo originale usato per la risposta finale.
 
 ## Riferimenti
 

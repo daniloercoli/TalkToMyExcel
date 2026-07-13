@@ -15,6 +15,7 @@ The router decides which path to try.
 Main inputs:
 
 - the user's question
+- recent conversation context when the question contains a follow-up reference
 - workbook metadata, such as sheets, columns, and semantic columns
 - fast heuristics
 - the LLM router only for ambiguous cases
@@ -41,7 +42,7 @@ Main responsibilities:
 - query Chroma for semantic search
 - run Python in the sandbox when advanced tabular analysis is needed
 - fetch source rows to show as evidence
-- try fallbacks when a route does not produce reliable results
+- try fallbacks when a route fails technically or is unsupported
 - build the final answer from the gathered context
 
 In short: the router decides where to go; the query engine does the work and checks whether the result is usable.
@@ -65,7 +66,7 @@ Routing follows this general order:
 1. Deterministic heuristics for obvious cases.
 2. LLM router for ambiguous cases.
 3. Query engine execution of the route plan.
-4. Fallback when the selected route does not produce enough evidence.
+4. Fallback when the selected route fails technically or is unsupported.
 
 Examples of deterministic choices:
 
@@ -79,6 +80,12 @@ Examples of deterministic choices:
 - "for each value of X" or explicit group-by -> `sql`
 - simple broad count -> `count`
 - exact filters, dates, and simple aggregates -> `sql`
+
+## Follow-up Questions and Context
+
+Questions containing references such as "same thing", "those", or "but only" are contextualized with the last conversation exchange before routing. A request such as "same, but only open" can therefore retain the previous intent while adding a new constraint.
+
+The session retains at most 20 messages per user. History can also contribute to final answer synthesis, while routing uses recent context only when it recognizes a follow-up question. Importing a new dataset or using the clear control in the UI resets the conversation.
 
 ## Count vs SQL
 
@@ -175,12 +182,14 @@ Optional chunking is controlled with environment variables:
 
 When a row is split into chunks, Chroma receives distinct chunk IDs, but each hit is mapped back to the original `row_id`. Answers and sources therefore remain at spreadsheet-row level.
 
+Importing adds only the new dataset's documents to the index; removing a dataset deletes only its associated documents. A full rebuild remains available from the UI or through `POST /api/semantic-index/rebuild` for maintenance and realignment.
+
 ## Debug
 
 The response may include debug metadata useful for understanding what happened:
 
 - `debug.route_plan`: primary route, reason, confidence, source strategy, candidates, and execution mode
-- `debug.route_attempts`: executed attempts, with status `ok`, `no_results`, or `failed`
+- `debug.route_attempts`: executed attempts, with status `ok` or `failed`
 - route-specific details, such as generated SQL, returned rows, semantic hits, or Python sandbox status
 
 These fields are meant for development, support, and golden set tuning. They are not required for the end user.

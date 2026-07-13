@@ -20,7 +20,7 @@ Il punto chiave è separare due responsabilità:
 
 ### Router
 
-Il router guarda la domanda e i metadati del workbook: fogli, colonne, colonne semantiche, ecc.
+Il router guarda la domanda, l'eventuale contesto recente di follow-up e i metadati del workbook: fogli, colonne, colonne semantiche, ecc.
 
 Non legge davvero le righe, non interroga DuckDB, non chiama Chroma e non produce la risposta finale.
 
@@ -31,7 +31,7 @@ Il suo output è un `RoutePlan`, cioè un piano di routing:
   "route": "hybrid",
   "reason": "structured_semantic_search",
   "confidence": 1.0,
-  "candidates": ["hybrid", "semantic", "sql", "python"],
+  "candidates": ["hybrid", "sql", "python"],
   "execution": "fallback"
 }
 ```
@@ -51,6 +51,7 @@ Fa il lavoro operativo:
 - recupera le righe sorgente
 - lancia Python in sandbox quando serve
 - gestisce fallback
+- usa la cronologia recente per risolvere le domande successive
 - costruisce il contesto per l'LLM finale
 - restituisce risposta, fonti e debug
 
@@ -105,6 +106,20 @@ Il query engine risponde alla domanda:
 "Confronta i due file e dimmi quali matricole mancano"
 -> python
 ```
+
+## Domande Successive
+
+La sessione conserva al massimo 20 messaggi per utente. Quando la nuova domanda contiene riferimenti come "stessa cosa", "quelli" o "ma solo", `routing_question()` combina l'ultimo scambio con la richiesta corrente prima di chiamare il router.
+
+Esempio:
+
+```text
+"Trova casi simili a vibrazione motore"
+"Stessa cosa, ma solo aperti"
+-> hybrid
+```
+
+Il testo originale della seconda domanda resta quello usato per generare la risposta. L'import di un dataset e `POST /api/session/clear` eliminano la cronologia, evitando che il contesto di un'analisi precedente si propaghi nella successiva.
 
 ## Perché Non Usare Sempre LLM
 
@@ -191,7 +206,6 @@ Se `hybrid` fallisce tecnicamente o non è supportata, il query engine prova la 
 Ogni tentativo produce uno stato:
 
 - `ok`
-- `no_results`
 - `failed`
 
 Questi stati finiscono nel debug.
@@ -234,6 +248,8 @@ Con `chunk_size=0`, il comportamento è:
 
 Se in futuro una riga contiene testo lungo, si può attivare chunking. Anche in quel caso ogni chunk rimane collegato al `row_id` originale.
 
+L'import aggiorna l'indice in modo incrementale, limitandosi al nuovo dataset. La rimozione cancella solo i suoi documenti; `POST /api/semantic-index/rebuild` esegue invece un riallineamento completo quando serve.
+
 ## Debug Utile Per Sviluppatori
 
 Le risposte possono includere:
@@ -244,7 +260,7 @@ Le risposte possono includere:
     "route_plan": {
       "primary": "hybrid",
       "reason": "structured_semantic_search",
-      "candidates": ["hybrid", "semantic", "sql", "python"],
+      "candidates": ["hybrid", "sql", "python"],
       "execution": "fallback"
     },
     "route_attempts": [

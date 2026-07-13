@@ -6,26 +6,12 @@ It uses a hybrid engine:
 
 - DuckDB for exact lookups, filters, counts, and aggregations.
 - Chroma for semantic search on the text columns selected during import.
+- A query router that combines structured, semantic, and sandboxed analysis when a question needs more than one approach.
 - Regolo.ai as the recommended OpenAI-compatible LLM and embedding provider.
 - Docker sandboxing for file profiling, extraction, and generated Python analysis.
+- Per-user conversation context for natural follow-up questions, with visible usage and a clear control.
 
 The project is MIT licensed.
-
-## Public Website
-
-The static public website lives in [public-site](public-site) and is configured
-for:
-
-```text
-https://talktomyexcel.ercoliconsulting.eu/
-```
-
-It follows the same bilingual structure used by the RAGuardian public site:
-
-- `public-site/index.html` redirects visitors to Italian or English.
-- `public-site/it/` contains the Italian pages.
-- `public-site/en/` contains the English pages.
-- `public-site/css/` and `public-site/assets/` contain shared styling and media.
 
 ## 5-Minute Start
 
@@ -103,9 +89,12 @@ Advanced calculation questions can use a short-lived Docker sandbox. The app exp
 3. Pick sheets/tables and semantic columns.
 4. Confirm import.
 5. Add more files to the same workspace when needed.
-6. Ask questions in English UI over the active workspace data.
+6. Ask questions over the active workspace and continue with contextual follow-ups.
+7. Review cited rows and tables; clear the conversation context or rebuild the semantic index from the UI when needed.
 
 Each imported file stays available as a dataset in the workspace. You can remove individual datasets from the UI, or use the API replace option when you intentionally want to clear the workspace and import a fresh file set.
+
+The router selects the most suitable path for each question: exact queries, semantic similarity, a combination of both, or sandboxed Python for comparisons and advanced calculations. A valid query with no matching rows is reported as an empty result instead of being reinterpreted by another route.
 
 ## Production
 
@@ -113,4 +102,9 @@ Each imported file stays available as a dataset in the workspace. You can remove
 gunicorn -c gunicorn.conf.py wsgi:application
 ```
 
-See [docs/DETAILED_GUIDE.md](docs/DETAILED_GUIDE.md) for architecture, provider settings, and troubleshooting.
+Further documentation:
+
+- [Detailed guide](docs/DETAILED_GUIDE.md) for architecture, provider settings, and troubleshooting.
+- [API reference](docs/API.md) for application endpoints.
+- [Routing guide](docs/routing.en.md) for query routing and answer generation ([Italian version](docs/routing.md)).
+- [Evaluation guide](docs/evaluation.md) for the private golden Q/A workflow.

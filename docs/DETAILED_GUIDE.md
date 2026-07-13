@@ -8,6 +8,8 @@ TalkToMyExcel keeps the application small:
 - Docker reads user-uploaded tabular files, returns safe CSV extracts plus metadata, and runs generated Python analysis when needed.
 - DuckDB stores the imported datasets for each user workspace.
 - Chroma stores embeddings for selected text columns.
+- A query router selects or combines exact, semantic, and sandboxed analysis paths.
+- Per-user conversation history supports contextual follow-up questions.
 - Regolo.ai is the recommended OpenAI-compatible provider for chat and embeddings.
 
 The server never imports Pandas or OpenPyXL to read user files. File profiling and extraction happen in the sandbox image.
@@ -63,6 +65,8 @@ app/uploads/workspaces/<user_id>/
 
 Each user can keep multiple imported datasets in the same workspace. Uploading a new file is safe during staging. Importing with `replace_existing=false` adds the file to the workspace; importing with `replace_existing=true` clears the current datasets first. Individual datasets can be removed without deleting the rest of the workspace.
 
+Conversation history and the last payload estimate are also stored per user. Importing a dataset clears that history so a new data context cannot accidentally reuse an old conversation.
+
 ## Provider Settings
 
 The default config lives in `app/default_providers.json`.
@@ -88,7 +92,9 @@ Local embeddings are supported through `sentence-transformers`. They keep semant
 4. UI shows sheets, preview rows, and suggested semantic columns.
 5. `POST /api/workbooks` imports selected sheets and columns.
 6. DuckDB stores the imported tables with dataset-scoped names.
-7. The Chroma collection is rebuilt across the active workspace datasets.
+7. Chroma adds semantic documents only for the newly imported dataset. Removing a dataset deletes only its documents.
+
+A full semantic-index rebuild remains available from the UI and through `POST /api/semantic-index/rebuild` for maintenance or recovery.
 
 ## Query Flow
 
@@ -101,12 +107,32 @@ The query engine uses routed spreadsheet tools:
 - Hybrid questions filter structured rows and then apply semantic search.
 - Multi-intent questions can combine SQL and semantic evidence before final synthesis.
 - Advanced numeric, diff, missing-ID, and multi-step calculation questions can use generated Python in a short-lived Docker sandbox.
+- Follow-up questions such as "same, but only open" use recent conversation context to resolve the current request before routing.
 
 The LLM receives compact, cited rows. It is not used as the database.
+
+A technically valid query that returns no rows is treated as a final empty result. Fallback routes are reserved for technical failures or unsupported paths, avoiding a different interpretation of a valid zero-result query.
 
 For Python analysis, the application exports the active DuckDB workspace tables to temporary CSV files, mounts them read-only at `/input`, runs generated Python with network disabled, and reads `/output/result.json`. The manifest includes dataset filenames so generated code can compare files. The container is removed after the run.
 
 See [routing.md](routing.md) for route details and [evaluation.md](evaluation.md) for the private golden Q/A workflow.
+
+## Conversation Controls
+
+The application keeps at most 20 recent messages per user. Routing uses the most recent exchange only when the current question contains a follow-up reference; answer generation can use the retained conversation.
+
+The UI shows an estimated context percentage based on the last LLM payload when available. The clear button removes both saved history and the payload estimate through `POST /api/session/clear`.
+
+## Optional Demo Sessions
+
+Set these values to expose the temporary demo button on the login page:
+
+```env
+DEMO_ENABLED=true
+DEMO_TIMEOUT_MINUTES=30
+```
+
+Each demo visitor gets an isolated, initially empty workspace. Expired demo users and their workspace files are removed on later demo activity; production deployments should also schedule `python scripts/cleanup_demo_users.py` so cleanup does not depend on new visitors.
 
 ## Logs
 

@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Piattaforma - TalkToMyExcel</title>
-  <meta name="description" content="Come funziona TalkToMyExcel: upload file tabellari, sandbox, DuckDB, Chroma e risposte AI citate.">
+  <meta name="description" content="Come funziona TalkToMyExcel: più file in un workspace, domande successive, analisi specializzate e risposte AI verificabili.">
   <link rel="canonical" href="https://talktomyexcel.ercoliconsulting.eu/it/piattaforma.html">
   <meta property="og:title" content="Piattaforma - TalkToMyExcel">
-  <meta property="og:description" content="Dal file Excel o CSV alla risposta AI verificabile.">
+  <meta property="og:description" content="Dai file aziendali a risposte verificabili, con domande successive e analisi multi-file.">
   <meta property="og:url" content="https://talktomyexcel.ercoliconsulting.eu/it/piattaforma.html">
   <meta property="og:image" content="https://talktomyexcel.ercoliconsulting.eu/assets/hero-data-chat.png">
   <meta property="og:type" content="website">
@@ -35,31 +35,56 @@
     <section class="page-hero">
       <div>
         <p class="eyebrow">Piattaforma</p>
-        <h1>Dal foglio alla risposta, senza trasformare tutto in testo indistinto.</h1>
-        <p>TalkToMyExcel tratta i dati tabellari come dati tabellari: righe, colonne, filtri, conteggi e descrizioni testuali restano elementi separati e controllabili.</p>
+        <h1>Dal foglio alla decisione, con una conversazione che segue il lavoro.</h1>
+        <p>TalkToMyExcel mantiene la struttura dei dati, sceglie l'analisi più adatta e permette di approfondire i risultati con domande successive.</p>
       </div>
     </section>
 
     <section class="section process">
       <div class="step">
         <span>01</span>
-        <h3>Carichi il file</h3>
-        <p>Excel, CSV, TSV e Parquet vengono salvati in staging e profilati prima di sostituire il dataset attivo.</p>
+        <h3>Carichi uno o più file</h3>
+        <p>Excel, CSV, TSV e Parquet vengono controllati prima di entrare nel workspace dedicato all'utente.</p>
       </div>
       <div class="step">
         <span>02</span>
-        <h3>Scegli cosa indicizzare</h3>
-        <p>Il sistema suggerisce le colonne descrittive piu utili per la ricerca semantica, ma la decisione resta esplicita.</p>
+        <h3>Confermi i dati utili</h3>
+        <p>Scegli fogli, tabelle e campi descrittivi da includere. Il sistema propone una selezione, la decisione resta esplicita.</p>
       </div>
       <div class="step">
         <span>03</span>
-        <h3>Interroghi i dati</h3>
-        <p>Domande su conteggi e stati passano da DuckDB; casi simili e descrizioni passano da Chroma.</p>
+        <h3>Fai domande e approfondisci</h3>
+        <p>Parti da una domanda e prosegui con richieste collegate: il contesto recente aiuta a mantenere il filo.</p>
       </div>
       <div class="step">
         <span>04</span>
-        <h3>Leggi una risposta citata</h3>
-        <p>Il modello genera la risposta a partire da evidenze compatte, non dall'intero file incollato nel prompt.</p>
+        <h3>Verifichi la risposta</h3>
+        <p>Il risultato nasce da evidenze selezionate e mostra righe o tabelle utili per controllarlo.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Esperienza di analisi</p>
+        <h2>Più vicino a una conversazione di lavoro.</h2>
+      </div>
+      <div class="cards four">
+        <article>
+          <h3>Domande successive</h3>
+          <p>Puoi restringere, confrontare o approfondire una risposta senza ripetere ogni volta la domanda iniziale.</p>
+        </article>
+        <article>
+          <h3>Più file, una vista</h3>
+          <p>Dataset diversi restano disponibili nello stesso workspace per confronti e analisi trasversali.</p>
+        </article>
+        <article>
+          <h3>Analisi complesse</h3>
+          <p>Il sistema gestisce anche differenze tra file, valori mancanti, rapporti, correlazioni e calcoli personalizzati.</p>
+        </article>
+        <article>
+          <h3>Contesto sotto controllo</h3>
+          <p>Un indicatore mostra quanto contesto viene usato e un comando permette di azzerare la conversazione.</p>
+        </article>
       </div>
     </section>
 
@@ -90,7 +115,7 @@
       <div>
         <p class="eyebrow">Motore ibrido</p>
         <h2>Numeri precisi quando servono numeri. Semantica quando serve capire.</h2>
-        <p>Un LLM da solo puo essere brillante ma approssimativo. TalkToMyExcel lo usa come strato di ragionamento e sintesi, mentre filtri, righe e conteggi restano gestiti da componenti dati dedicati.</p>
+        <p>Un modello AI da solo può essere brillante ma approssimativo. TalkToMyExcel affida filtri, conteggi, ricerca di casi simili e calcoli a strumenti specializzati, poi compone una risposta leggibile.</p>
         <a class="text-link" href="sicurezza.html">Vedi il perimetro di sicurezza</a>
       </div>
     </section>

@@ -15,6 +15,7 @@ Il router decide quale strada tentare.
 Input principali:
 
 - domanda dell'utente
+- contesto recente della conversazione, quando la domanda contiene riferimenti di follow-up
 - metadati del workbook, come fogli, colonne e colonne semantiche
 - euristiche veloci
 - router LLM solo per casi ambigui
@@ -41,7 +42,7 @@ Responsabilità principali:
 - interrogare Chroma per la ricerca semantica
 - lanciare Python nella sandbox quando serve analisi tabellare avanzata
 - recuperare le righe sorgente da mostrare come fonti
-- provare i fallback quando una route non produce risultati affidabili
+- provare i fallback quando una route fallisce tecnicamente o non è supportata
 - costruire la risposta finale con il contesto raccolto
 
 In breve: il router decide dove andare; il query engine fa il lavoro e verifica se il risultato è utilizzabile.
@@ -65,7 +66,7 @@ Il routing segue questo ordine generale:
 1. Euristiche deterministiche per casi ovvi.
 2. Router LLM per casi ambigui.
 3. Esecuzione del piano da parte del query engine.
-4. Fallback se la route scelta non produce evidenza sufficiente.
+4. Fallback se la route scelta fallisce tecnicamente o non è supportata.
 
 Esempi di scelte deterministicamente riconosciute:
 
@@ -79,6 +80,12 @@ Esempi di scelte deterministicamente riconosciute:
 - "per ciascun valore di X" o group-by esplicito -> `sql`
 - conteggio semplice e largo -> `count`
 - filtri esatti, date e aggregazioni semplici -> `sql`
+
+## Domande Successive e Contesto
+
+Le domande che contengono riferimenti come "stessa cosa", "quelli" o "ma solo" vengono contestualizzate usando l'ultimo scambio della conversazione prima del routing. In questo modo una richiesta come "stessa cosa, ma solo aperti" può mantenere l'intento della domanda precedente e aggiungere il nuovo vincolo.
+
+La sessione conserva al massimo 20 messaggi per utente. La cronologia può contribuire anche alla sintesi finale, mentre il routing usa il contesto recente solo quando riconosce una domanda di follow-up. L'import di un nuovo dataset o il comando di pulizia nella UI azzerano la conversazione.
 
 ## Count vs SQL
 
@@ -175,12 +182,14 @@ Il chunking opzionale si abilita con variabili d'ambiente:
 
 Quando una riga viene divisa in chunk, Chroma riceve ID chunk distinti, ma ogni hit viene ricondotto al `row_id` originale. In questo modo le risposte e le fonti restano a livello di riga Excel.
 
+L'import aggiunge all'indice solo i documenti del nuovo dataset; la rimozione cancella solo quelli associati al dataset eliminato. Un rebuild completo resta disponibile dalla UI o tramite `POST /api/semantic-index/rebuild` per manutenzione e riallineamento.
+
 ## Debug
 
 La risposta può includere metadati di debug utili per capire cosa è successo:
 
 - `debug.route_plan`: route primaria, motivo, confidenza, strategia sorgente, candidati e modalità di esecuzione
-- `debug.route_attempts`: lista dei tentativi eseguiti, con stato `ok`, `no_results` o `failed`
+- `debug.route_attempts`: lista dei tentativi eseguiti, con stato `ok` o `failed`
 - dati specifici della route, come SQL generata, righe restituite, hit semantici o stato della sandbox Python
 
 Questi campi sono pensati per sviluppo, assistenza e tuning del golden set. Non sono necessari per l'utente finale.
