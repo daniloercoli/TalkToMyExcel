@@ -6,6 +6,13 @@ score answer correctness and citations.
 
 ## Golden file
 
+> **Public repository status:** a ready-to-run synthetic refinement golden set
+> is not included yet. The working set remains under the gitignored `private/`
+> directory and is intentionally not published. The JSON below documents the
+> canonical schema; it is not a public benchmark dataset. Until a tracked
+> synthetic set is added, create your own file to reproduce routing evaluation
+> with your questions and metadata.
+
 Keep production-derived golden sets under the gitignored `private/` directory.
 The canonical schema keeps `source_file` at the top level:
 

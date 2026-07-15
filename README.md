@@ -100,6 +100,16 @@ Each imported file stays available as a dataset in the workspace. You can remove
 
 The router selects the most suitable path for each question: exact queries, semantic similarity, a combination of both, or sandboxed Python for comparisons and advanced calculations. A valid query with no matching rows is reported as an empty result instead of being reinterpreted by another route.
 
+## Public Golden-Set Status
+
+This repository does not yet include a public synthetic golden set for routing
+refinement. The working golden set stays under the gitignored `private/`
+directory and is intentionally not published. The evaluator and canonical
+schema are public, but scores produced from the private set are not an
+independently reproducible public benchmark. See the
+[evaluation guide](docs/evaluation.md) to create and run your own set while a
+safe synthetic example is still pending.
+
 ## Production
 
 ```bash
