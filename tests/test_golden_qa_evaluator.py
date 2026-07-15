@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 
-from scripts.evaluate_golden_qa import evaluate_routes, main, metadata_from_profile, summarize
+from app.query_engine import ROUTER
+from app.routing import LLMRouterStrategy
+from scripts.evaluate_golden_qa import build_router, evaluate_routes, main, metadata_from_profile, summarize
 
 
 def synthetic_payload():
     return {
+        "source_file": "synthetic.xlsx",
         "profile": {
-            "source_file": "synthetic.xlsx",
             "sheets": [
                 {
                     "name": "Cases",
@@ -57,8 +59,10 @@ def synthetic_payload():
 
 
 def test_metadata_from_profile_keeps_semantic_columns():
-    metadata = metadata_from_profile(synthetic_payload()["profile"])
+    payload = synthetic_payload()
+    metadata = metadata_from_profile(payload["profile"], source_file=payload["source_file"])
 
+    assert metadata["tables"][0]["filename"] == "synthetic.xlsx"
     assert metadata["tables"][0]["sheet"] == "Cases"
     assert metadata["tables"][0]["semantic_columns"] == ["problem_description"]
 
@@ -74,6 +78,14 @@ def test_evaluate_routes_uses_deterministic_router():
     assert [result.question_contextualized for result in results] == [False, False, False, True, False]
 
 
+def test_evaluator_uses_the_production_router_order():
+    assert build_router(use_llm_router=True) is ROUTER
+    deterministic = build_router(use_llm_router=False)
+    expected = [type(strategy) for strategy in ROUTER.strategies if not isinstance(strategy, LLMRouterStrategy)]
+
+    assert [type(strategy) for strategy in deterministic.strategies] == expected
+
+
 def test_cli_writes_private_style_report(tmp_path, capsys):
     golden_path = tmp_path / "golden_qa.json"
     output_path = tmp_path / "report.json"
@@ -83,5 +95,6 @@ def test_cli_writes_private_style_report(tmp_path, capsys):
 
     assert exit_code == 0
     report = json.loads(output_path.read_text(encoding="utf-8"))
+    assert report["evaluation_scope"] == "routing_only"
     assert report["summary"]["matched"] == 5
     assert '"accuracy": 1.0' in capsys.readouterr().out

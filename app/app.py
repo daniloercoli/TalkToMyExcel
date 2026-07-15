@@ -32,7 +32,11 @@ def create_app() -> Flask:
         request.request_id = uuid.uuid4().hex[:12]
 
     if Config.DEMO_ENABLED:
-        from app.demo import cleanup_expired_demo_users, delete_demo_user, is_demo_expired
+        from app.demo import cleanup_expired_demo_users, delete_demo_user, demo_timeout, is_demo_expired
+
+        @app.context_processor
+        def demo_configuration():
+            return {"demo_timeout_minutes": int(demo_timeout().total_seconds() // 60)}
 
         @app.before_request
         def refresh_demo_session():
@@ -49,10 +53,12 @@ def create_app() -> Flask:
             if not user.get("is_demo"):
                 return None
             if is_demo_expired(user):
-                delete_demo_user(user_id, store=user_store)
+                if delete_demo_user(user_id, store=user_store):
+                    session.clear()
+                    return redirect(url_for("login", demo_expired="1"))
+            if not user_store.touch(user_id):
                 session.clear()
-                return redirect(url_for("login", demo_expired="1"))
-            user_store.touch(user_id)
+                return redirect(url_for("login"))
             return None
 
         @app.post("/demo/start")

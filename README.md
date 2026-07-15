@@ -1,7 +1,7 @@
 # TalkToMyExcel
 
 TalkToMyExcel is a self-hostable Flask app for asking questions over Excel,
-CSV, TSV, Parquet, and other tabular business exports.
+CSV, TSV, and Parquet files.
 It uses a hybrid engine:
 
 - DuckDB for exact lookups, filters, counts, and aggregations.
@@ -22,7 +22,7 @@ Requirements:
 - A Regolo.ai API key, unless you switch to local embeddings and another chat provider
 
 ```bash
-git clone <your-fork-url> TalkToMyExcel
+git clone https://github.com/daniloercoli/TalkToMyExcel.git
 cd TalkToMyExcel
 
 python3 -m venv .venv
@@ -35,7 +35,7 @@ python -m pip install -r requirements.txt
 
 cp .env.example .env
 # On windows: copy .env.example .env
-# edit .env and set REGOLO_API_KEY
+# edit .env and set REGOLO_API_KEY; replace every placeholder before exposing the app
 
 docker build -f Dockerfile.sandbox -t talktomyexcel-sandbox:latest .
 
@@ -80,6 +80,10 @@ ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=change-me-now
 ```
 
+These defaults are for local development only. `APP_HOST` and `APP_PORT` also
+configure only the Flask development command (`python -m app.app`); production
+binding is configured in `gunicorn.conf.py`.
+
 Advanced calculation questions can use a short-lived Docker sandbox. The app exports the active DuckDB workspace tables to read-only CSV inputs, runs LLM-generated Python with networking disabled, reads the JSON result, and removes the container.
 
 ## How It Works
@@ -90,7 +94,7 @@ Advanced calculation questions can use a short-lived Docker sandbox. The app exp
 4. Confirm import.
 5. Add more files to the same workspace when needed.
 6. Ask questions over the active workspace and continue with contextual follow-ups.
-7. Review cited rows and tables; clear the conversation context or rebuild the semantic index from the UI when needed.
+7. Review returned rows and source references when the selected route provides them; clear the conversation context or rebuild the semantic index from the UI when needed.
 
 Each imported file stays available as a dataset in the workspace. You can remove individual datasets from the UI, or use the API replace option when you intentionally want to clear the workspace and import a fresh file set.
 
@@ -101,6 +105,31 @@ The router selects the most suitable path for each question: exact queries, sema
 ```bash
 gunicorn -c gunicorn.conf.py wsgi:application
 ```
+
+`gunicorn.conf.py` forces `APP_ENV=production`, so startup fails if
+`SECRET_KEY` or the bootstrapped admin password still uses a known placeholder.
+Before starting:
+
+- Set a unique `SECRET_KEY`, a strong `ADMIN_PASSWORD`, the intended
+  `ADMIN_EMAIL`, and provider API keys in `.env`.
+- Build the sandbox image and run the service account with only the Docker and
+  filesystem permissions it needs.
+- Put Gunicorn behind an HTTPS reverse proxy and restrict direct access to its
+  bind port.
+- Persist and back up `app/data` and `app/uploads`; define retention for
+  uploads, workspaces, backups, and logs.
+- Keep one application host per data directory. JSON locks protect Gunicorn
+  workers on one host, but this storage is not a multi-host database.
+- If demo sessions are enabled, schedule `scripts/cleanup_demo_users.py` with
+  the same virtual-environment interpreter used by the application. See the
+  detailed guide for a cron example.
+- Run the test suite and verify upload, query, delete, rebuild, and restore
+  workflows before accepting real data.
+
+Changing the embedding provider/model or semantic chunk settings requires a
+full semantic-index rebuild. Changing only the chat provider/model does not.
+Custom OpenAI-compatible providers and the rebuild procedure are documented in
+the detailed guide.
 
 Further documentation:
 

@@ -2,11 +2,6 @@ from __future__ import annotations
 
 import os
 
-import httpx
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 from .base import EmbeddingProvider, LLMProvider
 
 
@@ -38,7 +33,6 @@ class OpenAICompatibleLLM(LLMProvider):
         self.client = OpenAI(
             api_key=client_key(config),
             base_url=base_url(config),
-            http_client=httpx.Client(verify=False),
         )
 
     def generate(
@@ -74,7 +68,6 @@ class OpenAICompatibleEmbedding(EmbeddingProvider):
         self.client = OpenAI(
             api_key=client_key(config),
             base_url=base_url(config),
-            http_client=httpx.Client(verify=False),
         )
 
     def encode_documents(self, texts: list[str]) -> list[list[float]]:

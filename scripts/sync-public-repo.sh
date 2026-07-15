@@ -16,7 +16,9 @@ What is copied:
 What is not copied:
   - this repository's .git directory
   - files ignored by .gitignore
-  - publication blocklist entries such as runtime data and .DS_Store
+  - publication blocklist entries such as runtime data, real .env files, and .DS_Store
+
+The shareable .env.example template is copied.
 
 Options:
   --dry-run  Show what would change without writing to the public repo.
@@ -140,12 +142,17 @@ manifest="$tmp_dir/manifest.z"
 
 while IFS= read -r -d '' rel_path; do
   case "$rel_path" in
+    .env.example)
+      ;;
     .DS_Store|*/.DS_Store|app/data/*|app/uploads/*|app/logs/*|.env|.env.*)
       continue
       ;;
   esac
 
   source_path="$source_root/$rel_path"
+  if [[ ! -e "$source_path" && ! -L "$source_path" ]]; then
+    continue
+  fi
   target_path="$staging/$rel_path"
   mkdir -p "$(dirname "$target_path")"
 

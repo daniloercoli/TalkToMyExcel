@@ -159,15 +159,19 @@ Flusso:
 
 ## Sicurezza SQL
 
-Le query SQL generate sono eseguite su DuckDB in sola lettura e vengono validate prima dell'esecuzione.
+Le query SQL generate vengono analizzate dal parser DuckDB prima dell'esecuzione.
 
 Regole principali:
 
-- devono iniziare con `SELECT` o `WITH`
-- non possono contenere più statement
-- sono bloccate parole chiave mutanti o pericolose come `INSERT`, `UPDATE`, `DELETE`, `DROP`, `COPY`, `PRAGMA`, `ATTACH`, `INSTALL` e `LOAD`
-- il numero di righe lette per il contesto è limitato
-- il debug indica se il risultato è stato troncato
+- deve esserci esattamente uno statement
+- il parser deve classificarlo come `SELECT` (una CTE `WITH` valida viene classificata come query di selezione)
+- la connessione apre il database DuckDB in modalità `read_only`
+- `enable_external_access` è disabilitato sulla connessione di query
+- al massimo 200 righe risultanti entrano nel contesto della risposta; il debug indica se il risultato è stato troncato
+
+Il prompt vieta inoltre istruzioni mutanti o amministrative, ma l'enforcement non
+si basa su una lista testuale di keyword: usa il tipo restituito dal parser, la
+connessione read-only e il blocco dell'accesso esterno.
 
 ## Indice Semantico
 
@@ -177,12 +181,13 @@ Di default TalkToMyExcel mantiene un documento embedding per ogni riga. Questo f
 
 Il chunking opzionale si abilita con variabili d'ambiente:
 
-- `SEMANTIC_CHUNK_SIZE=0`: disabilita il chunking. È il default.
-- `SEMANTIC_CHUNK_OVERLAP=0`: overlap tra chunk adiacenti quando il chunking è attivo.
+- `SEMANTIC_CHUNK_SIZE=0`: un documento per riga, senza suddivisione (default).
+- `SEMANTIC_CHUNK_SIZE=N`: divide il testo della riga in segmenti di massimo `N` caratteri.
+- `SEMANTIC_CHUNK_OVERLAP=N`: numero di caratteri ripetuti tra segmenti adiacenti; deve essere inferiore alla dimensione del chunk.
 
 Quando una riga viene divisa in chunk, Chroma riceve ID chunk distinti, ma ogni hit viene ricondotto al `row_id` originale. In questo modo le risposte e le fonti restano a livello di riga Excel.
 
-L'import aggiunge all'indice solo i documenti del nuovo dataset; la rimozione cancella solo quelli associati al dataset eliminato. Un rebuild completo resta disponibile dalla UI o tramite `POST /api/semantic-index/rebuild` per manutenzione e riallineamento.
+L'import aggiunge all'indice solo i documenti del nuovo dataset; la rimozione cancella solo quelli associati al dataset eliminato. Cambiare provider/modello embedding, `SEMANTIC_CHUNK_SIZE` o `SEMANTIC_CHUNK_OVERLAP` richiede il riavvio (per le variabili d'ambiente) e un rebuild completo dalla UI o tramite `POST /api/semantic-index/rebuild` **prima** di usare nuovamente la ricerca semantica. I vettori esistenti non vengono migrati automaticamente. Cambiare solo il provider/modello chat non richiede rebuild.
 
 ## Debug
 

@@ -38,6 +38,41 @@ a {
   color: inherit;
 }
 
+a:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 10px 14px;
+  color: #fff;
+  background: var(--navy);
+  border-radius: 8px;
+  font-weight: 800;
+  text-decoration: none;
+  transform: translateY(-160%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .site-header {
   position: sticky;
   top: 0;
@@ -87,7 +122,7 @@ a {
 }
 
 .nav-links a:hover,
-.nav-links a.active {
+.nav-links a[aria-current="page"] {
   color: var(--green-dark);
 }
 
@@ -354,6 +389,7 @@ p {
 
 .visual-split img {
   width: 100%;
+  height: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
@@ -561,8 +597,12 @@ p {
   align-items: stretch;
 }
 
-.contact-card h2 {
-  font-size: clamp(2rem, 4vw, 3rem);
+.contact-address {
+  margin-bottom: 18px;
+  color: var(--ink) !important;
+  font-size: clamp(1.55rem, 4vw, 3rem);
+  font-weight: 900;
+  line-height: 1.1 !important;
   overflow-wrap: anywhere;
 }
 
@@ -583,6 +623,19 @@ p {
 .legal a {
   color: var(--green-dark);
   font-weight: 800;
+}
+
+.legal .legal-note {
+  padding: 16px;
+  background: #eef6f2;
+  border-left: 4px solid var(--green-dark);
+}
+
+code {
+  padding: .1em .28em;
+  background: #e9f2ee;
+  border-radius: 4px;
+  font: .9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .cta {
@@ -665,8 +718,8 @@ p {
   .nav-links {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
     gap: 16px;
-    overflow-x: auto;
     padding-bottom: 2px;
   }
 
@@ -727,8 +780,13 @@ p {
   }
 
   .nav-links {
-    gap: 10px;
+    column-gap: 14px;
+    row-gap: 2px;
     font-size: .82rem;
+  }
+
+  .nav-links > a {
+    padding: 6px 0;
   }
 
   .hero-content,
@@ -822,5 +880,24 @@ p {
 
   .footer-bottom {
     display: grid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .button:hover {
+    transform: none;
   }
 }

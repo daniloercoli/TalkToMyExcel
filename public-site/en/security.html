@@ -4,34 +4,50 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Security - TalkToMyExcel</title>
-  <meta name="description" content="TalkToMyExcel uses file sandboxing, separate workspaces, controlled AI providers and Regolo.ai for scenarios with important business data.">
+  <meta name="description" content="The TalkToMyExcel security boundary: file sandboxing, separate workspaces, explicit AI data flows and a configurable provider.">
   <link rel="canonical" href="https://talktomyexcel.ercoliconsulting.eu/en/security.html">
+  <link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/sicurezza.html">
+  <link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/security.html">
+  <link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/security.html">
+  <meta property="og:site_name" content="TalkToMyExcel">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="it_IT">
   <meta property="og:title" content="Security - TalkToMyExcel">
-  <meta property="og:description" content="AI over business data with boundaries, auditability and a recommended European provider.">
+  <meta property="og:description" content="AI over business data with an explicit boundary, controllable flows and a recommended European provider.">
   <meta property="og:url" content="https://talktomyexcel.ercoliconsulting.eu/en/security.html">
-  <meta property="og:image" content="https://talktomyexcel.ercoliconsulting.eu/assets/hero-data-chat.png">
+  <meta property="og:image" content="https://talktomyexcel.ercoliconsulting.eu/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The TalkToMyExcel security boundary">
   <meta property="og:type" content="website">
-  <link rel="icon" type="image/png" href="../assets/service-icon-512.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Security - TalkToMyExcel">
+  <meta name="twitter:description" content="AI over business data with an explicit boundary, controllable flows and a recommended European provider.">
+  <meta name="twitter:image" content="https://talktomyexcel.ercoliconsulting.eu/assets/social-card.png">
+  <meta name="twitter:image:alt" content="The TalkToMyExcel security boundary">
+  <link rel="icon" type="image/webp" href="../assets/service-icon.webp">
   <link rel="apple-touch-icon" href="../assets/service-icon-512.png">
   <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <header class="site-header">
-    <a class="brand" href="index.html" aria-label="TalkToMyExcel home">
-      <img src="../assets/service-icon-512.png" alt="" width="40" height="40">
+    <a class="brand" href="./" aria-label="TalkToMyExcel home">
+      <img src="../assets/service-icon.webp" alt="" width="40" height="40">
       <span>TalkToMyExcel</span>
     </a>
     <nav class="nav-links" aria-label="Main navigation">
-      <a href="index.html">Home</a>
+      <a href="./">Home</a>
       <a href="platform.html">Platform</a>
-      <a class="active" href="security.html">Security</a>
+      <a class="active" aria-current="page" href="security.html">Security</a>
       <a href="regolo.html">Regolo.ai</a>
       <a href="contact.html">Contact</a>
-      <span class="lang-switch"><a href="../it/sicurezza.html">IT</a><a class="active" href="security.html">EN</a></span>
+      <span class="lang-switch" role="group" aria-label="Language selection"><a href="../it/sicurezza.html">IT</a><a class="active" aria-current="page" href="security.html">EN</a></span>
     </nav>
   </header>
 
-  <main>
+  <main id="main-content">
     <section class="page-hero security-hero">
       <div>
         <p class="eyebrow">Secure AI</p>
@@ -56,7 +72,7 @@
         </article>
         <article>
           <h3>Controlled provider</h3>
-          <p>Regolo.ai is the recommended choice for European inference, zero retention and no training on customer data.</p>
+          <p>Regolo.ai is the recommended choice for European inference, zero retention and no training on customer data, under the terms of the configured service.</p>
         </article>
         <article>
           <h3>Controllable context</h3>
@@ -68,11 +84,11 @@
     <section class="section split">
       <div>
         <p class="eyebrow">Architecture</p>
-        <h2>The model is not the database.</h2>
+        <h2>The model is not the data engine.</h2>
       </div>
       <div class="prose">
-        <p>Dedicated data components handle filters, counts and similar-case searches. Advanced analysis runs in an isolated environment. The model enters at the end, once compact evidence already exists.</p>
-        <p>This reduces hallucination risk and makes it easier to understand where an answer comes from: rows, tables and columns remain part of the conversation.</p>
+        <p>Filters, counts and calculations work on the imported data. During indexing, text from the selected descriptive fields is sent to the configured embedding provider to create the semantic index.</p>
+        <p>When an answer is generated, the model receives evidence selected by the engine, not the whole raw file. Results and tables remain checkable; source rows are shown when the analysis path makes them available.</p>
       </div>
     </section>
 
@@ -80,7 +96,7 @@
       <div>
         <p class="eyebrow">Regolo.ai recommended</p>
         <h2>European sovereignty and zero retention for important data.</h2>
-        <p>With Regolo.ai, prompts and outputs are handled in memory by the inference layer and are not persisted. Customer request content is not used to train or fine-tune shared models.</p>
+        <p>With the recommended Regolo.ai configuration, the provider does not retain prompts or outputs and does not use customer content to train shared models. Before production use, confirm the selected plan, contractual terms and effective configuration.</p>
         <a class="button light" href="regolo.html">Details on Regolo.ai</a>
       </div>
     </section>
@@ -106,7 +122,7 @@
             <li>File profiled and imported as a dataset.</li>
             <li>Regolo.ai recommended for compliance and zero retention.</li>
             <li>Hybrid engine with selected evidence.</li>
-            <li>Cited answers and clearable conversation context.</li>
+            <li>Checkable results, sources when available and clearable context.</li>
           </ul>
         </article>
       </div>
@@ -115,8 +131,8 @@
     <section class="cta">
       <div>
         <p class="eyebrow">Assessment</p>
-        <h2>Bring the most delicate use case.</h2>
-        <p>If it works on sensitive data, it also works on simple data.</p>
+        <h2>Assess the most delicate use case too.</h2>
+        <p>Start with synthetic or anonymized data; agree on scope, provider, roles and a secure channel before using real data.</p>
       </div>
       <a class="button primary" href="contact.html">Let's talk</a>
     </section>
@@ -127,8 +143,8 @@
       <strong>TalkToMyExcel</strong>
       <p>Secure AI for Excel, CSV and business data.</p>
     </div>
-    <nav>
-      <a href="index.html">Home</a>
+    <nav aria-label="Footer navigation">
+      <a href="./">Home</a>
       <a href="platform.html">Platform</a>
       <a href="regolo.html">Regolo.ai</a>
       <a href="privacy.html">Privacy</a>

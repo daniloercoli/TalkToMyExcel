@@ -1,12 +1,13 @@
-# Evaluation Workflow
+# Routing Evaluation Workflow
 
-TalkToMyExcel supports a private golden Q/A workflow for tuning routing and answer quality without committing production data.
+`scripts/evaluate_golden_qa.py` evaluates **route selection only**. It does not
+import a workbook, execute DuckDB/Chroma/Python routes, call `/api/query`, or
+score answer correctness and citations.
 
-## Golden Q/A File
+## Golden file
 
-Keep production-derived golden sets under `private/`.
-
-Recommended shape:
+Keep production-derived golden sets under the gitignored `private/` directory.
+The canonical schema keeps `source_file` at the top level:
 
 ```json
 {
@@ -27,63 +28,78 @@ Recommended shape:
     {
       "id": "Q001",
       "question": "How many cases do we have?",
-      "expected_route": "count",
-      "expected_answer": {"rows": 100},
-      "verification": "Exact row count.",
-      "columns": [],
-      "row_refs": []
+      "expected_route": "count"
     }
   ]
 }
 ```
 
-Follow-up questions can include recent chat history. The route evaluator uses it only to resolve the current question for routing metrics:
+Follow-up questions can include recent history:
 
 ```json
 {
   "id": "Q002",
   "history": [
     {"role": "user", "content": "Find cases similar to motor vibration"},
-    {"role": "assistant", "content": "The closest vibration cases are MX-1001 and MX-1003."}
+    {"role": "assistant", "content": "The closest cases are MX-1001 and MX-1003."}
   ],
   "question": "same, but only open",
   "expected_route": "hybrid"
 }
 ```
 
-`private/` is gitignored, so generated files such as `private/golden_qa.json`, `private/golden_qa.md`, and `private/golden_qa_eval.json` stay local.
+The evaluator contextualizes the current question exactly as the application
+does before routing. It does not score the text stored in the assistant-history
+entry.
 
-## Route Evaluation
+## Run route evaluation
 
-Run deterministic routing evaluation:
+Run deterministic evaluation:
 
 ```bash
 .venv/bin/python scripts/evaluate_golden_qa.py private/golden_qa.json --output private/golden_qa_eval.json
 ```
 
-This mode avoids the LLM fallback. It is best for checking whether cheap routing heuristics cover the known after-sales question patterns.
+This uses the production router's strategy instances and order, omitting only
+the LLM fallback. It is deterministic and does not require provider access.
 
-Run full router evaluation, including LLM fallback:
+Include the production LLM fallback for ambiguous questions:
 
 ```bash
 .venv/bin/python scripts/evaluate_golden_qa.py private/golden_qa.json --use-llm-router --output private/golden_qa_eval.json
 ```
 
-Use a threshold in CI-like checks:
+This mode uses the same router instance as the application and can make provider
+requests. Keep questions and reports private.
+
+Use a route-accuracy threshold in CI-like checks:
 
 ```bash
 .venv/bin/python scripts/evaluate_golden_qa.py private/golden_qa.json --min-accuracy 0.9
 ```
 
-The script prints only summary metrics by default, including how many questions were contextualized from history. Use `--verbose` for per-question route IDs, expected routes, actual routes, reasons, and candidate chains. Avoid sharing verbose output when the golden set contains production-derived questions.
+The JSON report includes `"evaluation_scope": "routing_only"`. The script
+prints summary metrics by default; `--verbose` adds per-question expected and
+actual routes, reasons, candidate chains, and contextualization state.
 
-## Interpreting Results
+## Interpret route results
 
-- `count`: broad deterministic summaries, such as total rows or open/closed distributions.
-- `sql`: exact filters, dates, simple aggregates, and explicit column distributions such as "per ciascun valore di X".
+- `count`: broad deterministic summaries.
+- `sql`: exact filters, dates, simple aggregates, and explicit distributions.
 - `semantic`: fuzzy search over selected semantic columns.
-- `hybrid`: structured SQL filter first, semantic ranking second.
-- `multi`: multiple subroutes synthesized into one answer.
-- `python`: dataframe logic, cross-file comparisons, ratios, missing IDs, and row dumps.
+- `hybrid`: structured SQL filtering followed by semantic ranking.
+- `multi`: several subroutes combined into one response.
+- `python`: dataframe logic, cross-file comparisons, ratios, or missing IDs.
 
-When a mismatch appears, decide whether the route is truly wrong or the expected route should be updated. For example, an explicit "group by this column" question is normally better as `sql`, even if the grouped column is status-like.
+A mismatch can mean either a router regression or an outdated expected route.
+For example, an explicit group-by question normally belongs to `sql`, even when
+the grouped column resembles a status field.
+
+## Answer-quality checks are separate
+
+Fields such as `expected_answer`, `row_refs`, and `verification` may be useful as
+manual annotations, but this script deliberately ignores them. Answer-quality
+testing needs a fixed synthetic workbook loaded into a test application, actual
+`/api/query` execution, and route-appropriate assertions (for example an exact
+count, expected row IDs, or required source fields). Do not report routing
+accuracy as answer accuracy.

@@ -23,6 +23,7 @@ def env_int(name: str, default: int) -> int:
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-me")
+    ENVIRONMENT = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).strip().lower()
     DATA_DIR = ROOT / "app" / "data"
     UPLOAD_DIR = ROOT / "app" / "uploads"
     LOG_DIR = ROOT / "app" / "logs"
@@ -41,6 +42,25 @@ class Config:
     DEMO_TIMEOUT_MINUTES = env_int("DEMO_TIMEOUT_MINUTES", 30)
 
 
+def is_production() -> bool:
+    return Config.ENVIRONMENT in {"prod", "production"}
+
+
+def validate_production_secret() -> None:
+    if is_production() and str(Config.SECRET_KEY).strip().lower() in {
+        "",
+        "change-this-secret",
+        "dev-only-change-me",
+    }:
+        raise RuntimeError("Set a non-placeholder SECRET_KEY before starting in production")
+
+
+def validate_production_admin_password(password: str) -> None:
+    if is_production() and password.strip().lower() in {"", "change-me-now"}:
+        raise RuntimeError("Set a non-placeholder ADMIN_PASSWORD before bootstrapping production")
+
+
 def ensure_dirs() -> None:
+    validate_production_secret()
     for path in (Config.DATA_DIR, Config.UPLOAD_DIR, Config.LOG_DIR):
         path.mkdir(parents=True, exist_ok=True)

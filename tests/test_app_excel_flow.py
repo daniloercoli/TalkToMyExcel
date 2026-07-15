@@ -215,6 +215,8 @@ def test_excel_upload_import_and_query_routes(client_env):
     client = client_env["client"]
     login = client.post("/login", data={"email": "admin@example.com", "password": "change-me-now"})
     assert login.status_code == 302
+    with client.session_transaction() as session:
+        admin_id = session["user_id"]
 
     no_dataset = ask(client, "How many open cases do we have?")
     assert no_dataset["route"] == "no_dataset"
@@ -331,8 +333,8 @@ def test_excel_upload_import_and_query_routes(client_env):
     assert "MX-1001" in comparison["answer"]
     assert "MX-1004" in comparison["answer"]
 
-    workspace_upload_dir = Config.UPLOAD_DIR / "workspaces" / "admin-example-com"
-    workbook_dir = Config.DATA_DIR / "workspaces" / "admin-example-com" / "workbook"
+    workspace_upload_dir = Config.UPLOAD_DIR / "workspaces" / admin_id
+    workbook_dir = Config.DATA_DIR / "workspaces" / admin_id / "workbook"
     xlsx_staging_dir = workspace_upload_dir / "staging" / staging_payload["staging_id"]
     csv_staging_dir = workspace_upload_dir / "staging" / replacement_payload["staging_id"]
     assert (xlsx_staging_dir / "after_sales_cases.xlsx").exists()

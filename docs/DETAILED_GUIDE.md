@@ -69,7 +69,9 @@ Conversation history and the last payload estimate are also stored per user. Imp
 
 ## Provider Settings
 
-The default config lives in `app/default_providers.json`.
+Built-in provider definitions live in `app/default_providers.json`. The active
+selection and any custom definitions are stored in `app/data/settings.json`,
+which is created on first start.
 
 Regolo.ai is preconfigured:
 
@@ -84,6 +86,59 @@ The admin can choose:
 
 Local embeddings are supported through `sentence-transformers`. They keep semantic text local but need a compatible PyTorch runtime.
 
+To add an OpenAI-compatible endpoint, stop the application and add provider
+definitions to `app/data/settings.json`. Keep secrets in environment variables,
+not in this JSON file. For example:
+
+```json
+{
+  "chat": {
+    "provider": "acme-chat",
+    "model": "chat-model",
+    "temperature": 0.2
+  },
+  "embedding": {
+    "provider": "acme-embedding",
+    "model": "embedding-model"
+  },
+  "custom_llm_providers": [
+    {
+      "id": "acme-chat",
+      "name": "Acme Chat",
+      "type": "openai_compatible",
+      "base_url": "https://api.example.com/v1",
+      "api_key_env": "ACME_API_KEY",
+      "requires_api_key": true,
+      "models": ["chat-model"],
+      "default_model": "chat-model"
+    }
+  ],
+  "custom_embedding_providers": [
+    {
+      "id": "acme-embedding",
+      "name": "Acme Embeddings",
+      "type": "openai_compatible",
+      "base_url": "https://api.example.com/v1",
+      "api_key_env": "ACME_API_KEY",
+      "requires_api_key": true,
+      "models": ["embedding-model"],
+      "default_model": "embedding-model"
+    }
+  ]
+}
+```
+
+Then set `ACME_API_KEY` in `.env`, restart the application, and verify the
+selection on the Settings page. Provider IDs must be unique across their own
+chat or embedding list.
+
+Changing only the chat provider or model affects later requests immediately.
+Changing the embedding provider/model, `SEMANTIC_CHUNK_SIZE`, or
+`SEMANTIC_CHUNK_OVERLAP` makes existing Chroma vectors incompatible with the
+new configuration. Restart after environment changes and run a **full semantic
+index rebuild before using semantic search**. Existing vectors are not migrated
+automatically.
+
 ## File Flow
 
 1. `POST /api/staging`
@@ -94,7 +149,7 @@ Local embeddings are supported through `sentence-transformers`. They keep semant
 6. DuckDB stores the imported tables with dataset-scoped names.
 7. Chroma adds semantic documents only for the newly imported dataset. Removing a dataset deletes only its documents.
 
-A full semantic-index rebuild remains available from the UI and through `POST /api/semantic-index/rebuild` for maintenance or recovery.
+A full semantic-index rebuild remains available from the UI and through `POST /api/semantic-index/rebuild`. It is mandatory after changing the embedding provider/model or semantic chunk settings, and is also useful for maintenance or recovery.
 
 ## Query Flow
 
@@ -109,7 +164,14 @@ The query engine uses routed spreadsheet tools:
 - Advanced numeric, diff, missing-ID, and multi-step calculation questions can use generated Python in a short-lived Docker sandbox.
 - Follow-up questions such as "same, but only open" use recent conversation context to resolve the current request before routing.
 
-The LLM receives compact, cited rows. It is not used as the database.
+The chat model receives the question, compact schema/result context, and recent
+conversation context when applicable. Routes tied to identifiable worksheet
+rows can also return source references; aggregate and generated-analysis routes
+may not. The chat model is not used as the database.
+
+When remote embeddings are selected, the embedding endpoint receives the text
+from semantic columns during import/rebuild and the user's semantic query at
+search time. Select local embeddings if that text must not leave the host.
 
 A technically valid query that returns no rows is treated as a final empty result. Fallback routes are reserved for technical failures or unsupported paths, avoiding a different interpretation of a valid zero-result query.
 
@@ -132,7 +194,27 @@ DEMO_ENABLED=true
 DEMO_TIMEOUT_MINUTES=30
 ```
 
-Each demo visitor gets an isolated, initially empty workspace. Expired demo users and their workspace files are removed on later demo activity; production deployments should also schedule `python scripts/cleanup_demo_users.py` so cleanup does not depend on new visitors.
+Each demo visitor gets an isolated, initially empty workspace. Expired demo
+users and their workspace files are removed on later demo activity. Production
+deployments should also schedule cleanup so it does not depend on new visitors.
+Use the same virtual-environment interpreter and operating-system account as the
+application. For an installation under `/srv/TalkToMyExcel`, a cron entry can be:
+
+```cron
+*/5 * * * * /srv/TalkToMyExcel/.venv/bin/python /srv/TalkToMyExcel/scripts/cleanup_demo_users.py >> /srv/TalkToMyExcel/app/logs/demo-cleanup.log 2>&1
+```
+
+Change `/srv/TalkToMyExcel` to the real absolute path. Run the command manually
+once before installing the cron entry and check that it prints the number of
+deleted users.
+
+## Same-host Concurrency
+
+Users, provider settings, and conversation sessions use atomic JSON replacement
+plus inter-process file locks. This supports multiple Gunicorn workers sharing
+one local data directory. Do not mount the same JSON files into several app
+hosts and treat them as a distributed database; use a single application host
+or migrate that state to a transactional database before horizontal scaling.
 
 ## Logs
 

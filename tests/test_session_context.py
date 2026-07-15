@@ -31,19 +31,21 @@ def client(tmp_path, monkeypatch):
 def login(client):
     response = client.post("/login", data={"email": "admin@example.com", "password": "change-me-now"})
     assert response.status_code == 302
+    with client.session_transaction() as session:
+        return session["user_id"]
 
 
 def test_query_history_keeps_long_user_question(client):
     from app.session import get_history
 
-    login(client)
+    user_id = login(client)
     question = "Remember this long filter for the next question: " + " ".join(["serial-ABC"] * 80)
     assert len(question) > 500
 
     response = client.post("/api/query", json={"question": question})
     assert response.status_code == 200
 
-    history = get_history("admin-example-com")
+    history = get_history(user_id)
     assert history[0]["role"] == "user"
     assert history[0]["content"] == question
 
@@ -57,10 +59,10 @@ def test_query_history_keeps_long_user_question(client):
 def test_session_context_uses_last_payload_and_clear_removes_it(client):
     from app.session import get_history, payload_path, save_history, save_payload_usage
 
-    login(client)
-    save_history("admin-example-com", [], {"role": "user", "content": "How many open cases?"}, "Two.")
+    user_id = login(client)
+    save_history(user_id, [], {"role": "user", "content": "How many open cases?"}, "Two.")
     save_payload_usage(
-        "admin-example-com",
+        user_id,
         {"chars": 1234, "estimated_tokens": 309, "messages": 3, "source": "last_llm_payload"},
     )
 
@@ -73,5 +75,5 @@ def test_session_context_uses_last_payload_and_clear_removes_it(client):
     cleared = client.post("/api/session/clear")
     assert cleared.status_code == 200
     assert cleared.get_json() == {"ok": True}
-    assert get_history("admin-example-com") == []
-    assert not payload_path("admin-example-com").exists()
+    assert get_history(user_id) == []
+    assert not payload_path(user_id).exists()

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">TalkToMyExcel</title>
+  <desc id="desc">Social preview card for TalkToMyExcel, conversational analytics for Excel, CSV and business data.</desc>
+
+  <rect width="1200" height="630" fill="#0f2742"/>
+  <circle cx="1130" cy="20" r="260" fill="#123753"/>
+  <circle cx="1120" cy="650" r="330" fill="#064d40"/>
+
+  <rect x="82" y="82" width="132" height="132" rx="28" fill="#061a31" stroke="#55718f" stroke-width="3"/>
+  <rect x="105" y="108" width="78" height="72" rx="15" fill="#13a779"/>
+  <path d="M124 124h42M124 140h42M124 156h25M138 116v52M155 116v52" stroke="#e7fff7" stroke-width="5" stroke-linecap="round"/>
+  <path d="M151 151h44a17 17 0 0 1 17 17v13a17 17 0 0 1-17 17h-14l-20 13 5-13h-15a17 17 0 0 1-17-17v-13a17 17 0 0 1 17-17z" fill="#43d8a8" stroke="#b9f7e3" stroke-width="3"/>
+  <circle cx="187" cy="174" r="5" fill="#0f2742"/>
+  <circle cx="172" cy="174" r="5" fill="#0f2742"/>
+
+  <text x="82" y="292" fill="#ffffff" font-family="Arial" font-size="68">TalkToMyExcel</text>
+  <text x="86" y="354" fill="#bcecdf" font-family="Arial" font-size="31">Excel · CSV · Business data</text>
+  <text x="86" y="440" fill="#d7e4df" font-family="Arial" font-size="26">Ask. Analyse. Verify.</text>
+
+  <rect x="86" y="490" width="148" height="44" rx="12" fill="#193b56" stroke="#597188"/>
+  <text x="108" y="519" fill="#ffffff" font-family="Arial" font-size="19">Self-hosted</text>
+  <rect x="250" y="490" width="154" height="44" rx="12" fill="#193b56" stroke="#597188"/>
+  <text x="272" y="519" fill="#ffffff" font-family="Arial" font-size="19">Open source</text>
+
+  <rect x="642" y="76" width="470" height="478" rx="36" fill="#f8fffc"/>
+  <rect x="692" y="134" width="370" height="50" rx="12" fill="#05664f"/>
+  <rect x="718" y="151" width="92" height="14" rx="7" fill="#e2fff7"/>
+  <rect x="834" y="151" width="70" height="14" rx="7" fill="#e2fff7"/>
+  <rect x="928" y="151" width="104" height="14" rx="7" fill="#e2fff7"/>
+
+  <path d="M692 220H1062M692 282H1062M692 344H1062M692 406H1062M814 202V430M938 202V430" stroke="#c8ddd4" stroke-width="2"/>
+  <rect x="708" y="232" width="88" height="34" rx="8" fill="#d8f1e8"/>
+  <rect x="830" y="232" width="92" height="34" rx="8" fill="#c8eaf5"/>
+  <rect x="954" y="232" width="92" height="34" rx="8" fill="#ffe8a8"/>
+  <rect x="708" y="294" width="88" height="34" rx="8" fill="#e8f7f2"/>
+  <rect x="830" y="294" width="92" height="34" rx="8" fill="#d8f1e8"/>
+  <rect x="954" y="294" width="92" height="34" rx="8" fill="#ffd1ca"/>
+  <rect x="708" y="356" width="88" height="34" rx="8" fill="#c8eaf5"/>
+  <rect x="830" y="356" width="92" height="34" rx="8" fill="#e8f7f2"/>
+  <rect x="954" y="356" width="92" height="34" rx="8" fill="#d8f1e8"/>
+
+  <path d="M772 458h238a24 24 0 0 1 24 24v18a24 24 0 0 1-24 24H830l-42 27 9-27h-25a24 24 0 0 1-24-24v-18a24 24 0 0 1 24-24z" fill="#0f2742"/>
+  <rect x="784" y="480" width="172" height="12" rx="6" fill="#d7e4df"/>
+  <circle cx="986" cy="486" r="16" fill="#28d49a"/>
+</svg>

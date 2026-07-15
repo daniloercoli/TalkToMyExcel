@@ -4,6 +4,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 
 from app.config import Config
+from app.session import clear_history
 from app.stores import UserStore, slug
 
 
@@ -24,17 +25,20 @@ def cleanup_expired_demo_users(store: UserStore | None = None) -> int:
     store = store or UserStore()
     deleted = 0
     for user in store.list():
-        if is_demo_expired(user):
-            delete_demo_user(user["id"], store=store)
+        if is_demo_expired(user) and delete_demo_user(user["id"], store=store):
             deleted += 1
     return deleted
 
 
-def delete_demo_user(user_id: str, store: UserStore | None = None) -> None:
+def delete_demo_user(user_id: str, store: UserStore | None = None) -> bool:
+    store = store or UserStore()
+    if not store.delete_if(user_id, is_demo_expired):
+        return False
     workspace_id = slug(user_id)
     shutil.rmtree(Config.DATA_DIR / "workspaces" / workspace_id, ignore_errors=True)
     shutil.rmtree(Config.UPLOAD_DIR / "workspaces" / workspace_id, ignore_errors=True)
-    (store or UserStore()).delete(user_id)
+    clear_history(user_id)
+    return True
 
 
 def parse_time(value: str | None) -> datetime | None:

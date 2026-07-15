@@ -1,55 +1,95 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://talktomyexcel.ercoliconsulting.eu/</loc>
-    <lastmod>2026-07-05</lastmod>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/"/>
   </url>
   <url>
     <loc>https://talktomyexcel.ercoliconsulting.eu/it/</loc>
-    <lastmod>2026-07-13</lastmod>
-  </url>
-  <url>
-    <loc>https://talktomyexcel.ercoliconsulting.eu/it/piattaforma.html</loc>
-    <lastmod>2026-07-13</lastmod>
-  </url>
-  <url>
-    <loc>https://talktomyexcel.ercoliconsulting.eu/it/sicurezza.html</loc>
-    <lastmod>2026-07-13</lastmod>
-  </url>
-  <url>
-    <loc>https://talktomyexcel.ercoliconsulting.eu/it/regolo.html</loc>
-    <lastmod>2026-07-05</lastmod>
-  </url>
-  <url>
-    <loc>https://talktomyexcel.ercoliconsulting.eu/it/contatti.html</loc>
-    <lastmod>2026-07-05</lastmod>
-  </url>
-  <url>
-    <loc>https://talktomyexcel.ercoliconsulting.eu/it/privacy.html</loc>
-    <lastmod>2026-07-05</lastmod>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/"/>
   </url>
   <url>
     <loc>https://talktomyexcel.ercoliconsulting.eu/en/</loc>
-    <lastmod>2026-07-13</lastmod>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/"/>
+  </url>
+  <url>
+    <loc>https://talktomyexcel.ercoliconsulting.eu/it/piattaforma.html</loc>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/piattaforma.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/platform.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/platform.html"/>
   </url>
   <url>
     <loc>https://talktomyexcel.ercoliconsulting.eu/en/platform.html</loc>
-    <lastmod>2026-07-13</lastmod>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/piattaforma.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/platform.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/platform.html"/>
+  </url>
+  <url>
+    <loc>https://talktomyexcel.ercoliconsulting.eu/it/sicurezza.html</loc>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/sicurezza.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/security.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/security.html"/>
   </url>
   <url>
     <loc>https://talktomyexcel.ercoliconsulting.eu/en/security.html</loc>
-    <lastmod>2026-07-13</lastmod>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/sicurezza.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/security.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/security.html"/>
+  </url>
+  <url>
+    <loc>https://talktomyexcel.ercoliconsulting.eu/it/regolo.html</loc>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/regolo.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/regolo.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/regolo.html"/>
   </url>
   <url>
     <loc>https://talktomyexcel.ercoliconsulting.eu/en/regolo.html</loc>
-    <lastmod>2026-07-05</lastmod>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/regolo.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/regolo.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/regolo.html"/>
+  </url>
+  <url>
+    <loc>https://talktomyexcel.ercoliconsulting.eu/it/contatti.html</loc>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/contatti.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/contact.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/contact.html"/>
   </url>
   <url>
     <loc>https://talktomyexcel.ercoliconsulting.eu/en/contact.html</loc>
-    <lastmod>2026-07-05</lastmod>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/contatti.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/contact.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/contact.html"/>
+  </url>
+  <url>
+    <loc>https://talktomyexcel.ercoliconsulting.eu/it/privacy.html</loc>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/privacy.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/privacy.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/privacy.html"/>
   </url>
   <url>
     <loc>https://talktomyexcel.ercoliconsulting.eu/en/privacy.html</loc>
-    <lastmod>2026-07-05</lastmod>
+    <lastmod>2026-07-15</lastmod>
+    <xhtml:link rel="alternate" hreflang="it" href="https://talktomyexcel.ercoliconsulting.eu/it/privacy.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://talktomyexcel.ercoliconsulting.eu/en/privacy.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://talktomyexcel.ercoliconsulting.eu/en/privacy.html"/>
   </url>
 </urlset>

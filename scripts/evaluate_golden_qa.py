@@ -11,22 +11,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.routing import (  # noqa: E402
-    DetailRequestStrategy,
-    ExplicitGroupBySQLStrategy,
-    ExplicitPythonStrategy,
-    HybridStructuredSemanticStrategy,
-    LLMRouterStrategy,
-    MultiColumnCountStrategy,
-    MultiRouteStrategy,
-    PythonCalculationStrategy,
-    QueryRouter,
-    SQLRouteStrategy,
-    SemanticSearchStrategy,
-    SimpleCountStrategy,
-    StatusIdStrategy,
-)
-from app.query_engine import routing_question  # noqa: E402
+from app.routing import LLMRouterStrategy, QueryRouter  # noqa: E402
+from app.query_engine import ROUTER, routing_question  # noqa: E402
 from app.logging_config import log  # noqa: E402
 
 
@@ -54,6 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = summarize(results)
     report = {
         "golden_set": str(args.golden_set),
+        "evaluation_scope": "routing_only",
         "mode": "full-router" if args.use_llm_router else "deterministic-router",
         "summary": summary,
         "results": [asdict(result) for result in results],
@@ -69,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate TalkToMyExcel routing against a private or synthetic golden Q/A set."
+        description="Evaluate TalkToMyExcel route selection against a private or synthetic golden set."
     )
     parser.add_argument(
         "golden_set",
@@ -112,7 +99,10 @@ def load_payload(path: Path) -> dict:
 
 def evaluate_routes(payload: dict, *, use_llm_router: bool = False) -> list[EvaluationResult]:
     router = build_router(use_llm_router=use_llm_router)
-    metadata = metadata_from_profile(payload.get("profile") or {})
+    metadata = metadata_from_profile(
+        payload.get("profile") or {},
+        source_file=str(payload.get("source_file") or ""),
+    )
     results = []
     for item in payload["questions"]:
         question = str(item["question"])
@@ -137,32 +127,26 @@ def evaluate_routes(payload: dict, *, use_llm_router: bool = False) -> list[Eval
 
 
 def build_router(*, use_llm_router: bool) -> QueryRouter:
-    strategies = [
-        ExplicitPythonStrategy(),
-        StatusIdStrategy(),
-        MultiRouteStrategy(),
-        HybridStructuredSemanticStrategy(),
-        ExplicitGroupBySQLStrategy(),
-        SemanticSearchStrategy(),
-        DetailRequestStrategy(),
-        PythonCalculationStrategy(),
-        MultiColumnCountStrategy(),
-        SimpleCountStrategy(),
-        SQLRouteStrategy(),
-    ]
     if use_llm_router:
-        strategies.append(LLMRouterStrategy())
-    return QueryRouter(strategies=strategies)
+        return ROUTER
+    return QueryRouter(
+        strategies=[
+            strategy
+            for strategy in ROUTER.strategies
+            if not isinstance(strategy, LLMRouterStrategy)
+        ]
+    )
 
 
-def metadata_from_profile(profile: dict) -> dict:
+def metadata_from_profile(profile: dict, *, source_file: str = "") -> dict:
+    filename = source_file or str(profile.get("source_file") or profile.get("filename") or "")
     tables = []
     for index, sheet in enumerate(profile.get("sheets") or [], start=1):
         detected = sheet.get("detected") or {}
         semantic_columns = [column for column in detected.get("semantic") or [] if column]
         tables.append(
             {
-                "filename": profile.get("source_file"),
+                "filename": filename,
                 "sheet": sheet.get("name") or f"Sheet{index}",
                 "table": f"golden_sheet_{index}",
                 "rows": sheet.get("rows", 0),

@@ -10,13 +10,13 @@
   <form class="panel compact" method="post">
     <h2>Sign in</h2>
     {% if error %}<p class="alert">{{ error }}</p>{% endif %}
-    {% if demo_expired %}<p class="alert">La demo temporanea e scaduta per inattivita.</p>{% endif %}
+    {% if demo_expired %}<p class="alert">La demo temporanea è scaduta per inattività.</p>{% endif %}
     <label>Email<input name="email" type="email" autocomplete="email" required></label>
     <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
     <button class="primary" type="submit">Sign in</button>
     {% if demo_enabled %}
       <div class="demo-start">
-        <p>La demo crea un workspace temporaneo vuoto. I dati vengono cancellati dopo 30 minuti di inattivita.</p>
+        <p>La demo crea un workspace temporaneo vuoto. I dati vengono cancellati dopo {{ demo_timeout_minutes }} minuti di inattività.</p>
         <button class="secondary" type="submit" form="demoStartForm">Prova la demo</button>
       </div>
     {% endif %}

@@ -159,15 +159,19 @@ Flow:
 
 ## SQL Safety
 
-Generated SQL queries run against DuckDB in read-only mode and are validated before execution.
+Generated SQL is parsed by DuckDB before execution.
 
 Main rules:
 
-- queries must start with `SELECT` or `WITH`
-- multiple statements are not allowed
-- mutating or dangerous keywords are blocked, such as `INSERT`, `UPDATE`, `DELETE`, `DROP`, `COPY`, `PRAGMA`, `ATTACH`, `INSTALL`, and `LOAD`
-- the number of rows read into answer context is limited
-- debug metadata reports whether the result was truncated
+- there must be exactly one statement
+- DuckDB must classify it as `SELECT` (a valid `WITH` CTE is classified as a select query)
+- the application opens the DuckDB database in `read_only` mode
+- `enable_external_access` is disabled on the query connection
+- at most 200 result rows enter answer context; debug metadata reports truncation
+
+The generation prompt also forbids mutating and administrative statements, but
+enforcement does not rely on a textual keyword blocklist. It relies on the
+parser's statement type, the read-only connection, and disabled external access.
 
 ## Semantic Index
 
@@ -177,12 +181,13 @@ By default, TalkToMyExcel keeps one embedding document per spreadsheet row. This
 
 Optional chunking is controlled with environment variables:
 
-- `SEMANTIC_CHUNK_SIZE=0`: disables chunking. This is the default.
-- `SEMANTIC_CHUNK_OVERLAP=0`: overlap between adjacent chunks when chunking is enabled.
+- `SEMANTIC_CHUNK_SIZE=0`: one document per row with no splitting (default).
+- `SEMANTIC_CHUNK_SIZE=N`: split row text into segments of at most `N` characters.
+- `SEMANTIC_CHUNK_OVERLAP=N`: repeated characters between adjacent segments; it must be smaller than the chunk size.
 
 When a row is split into chunks, Chroma receives distinct chunk IDs, but each hit is mapped back to the original `row_id`. Answers and sources therefore remain at spreadsheet-row level.
 
-Importing adds only the new dataset's documents to the index; removing a dataset deletes only its associated documents. A full rebuild remains available from the UI or through `POST /api/semantic-index/rebuild` for maintenance and realignment.
+Importing adds only the new dataset's documents to the index; removing a dataset deletes only its associated documents. Changing the embedding provider/model, `SEMANTIC_CHUNK_SIZE`, or `SEMANTIC_CHUNK_OVERLAP` requires a restart (for environment changes) and a full rebuild from the UI or through `POST /api/semantic-index/rebuild` **before** semantic search is used again. Existing vectors are not migrated automatically. Changing only the chat provider/model does not require a rebuild.
 
 ## Debug
 

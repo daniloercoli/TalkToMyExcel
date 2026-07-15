@@ -45,6 +45,10 @@ def configure_test_config(tmp_path, monkeypatch, *, demo_enabled: bool) -> None:
     monkeypatch.setattr(Config, "DEMO_ENABLED", demo_enabled)
     monkeypatch.setattr(Config, "DEMO_TIMEOUT_MINUTES", 30)
 
+    import app.session as session_module
+
+    monkeypatch.setattr(session_module, "SESSIONS_DIR", Config.DATA_DIR / "sessions")
+
 
 def test_demo_start_creates_logged_in_temporary_user(demo_app):
     client = demo_app.test_client()
@@ -68,18 +72,33 @@ def test_demo_start_creates_logged_in_temporary_user(demo_app):
     assert settings.status_code == 403
 
 
+def test_demo_pages_show_configured_timeout_with_correct_accents(demo_app, monkeypatch):
+    monkeypatch.setattr(Config, "DEMO_TIMEOUT_MINUTES", 7)
+    client = demo_app.test_client()
+
+    login = client.get("/login").get_data(as_text=True)
+    assert "dopo 7 minuti di inattività" in login
+    assert "è scaduta per inattività" in client.get("/login?demo_expired=1").get_data(as_text=True)
+
+    client.post("/demo/start")
+    home = client.get("/").get_data(as_text=True)
+    assert "dopo 7 minuti di inattività" in home
+
+
 def test_admin_can_reset_workspace_data_after_confirmation(demo_app):
     client = demo_app.test_client()
     login = client.post("/login", data={"email": "admin@example.com", "password": "change-me-now"})
     assert login.status_code == 302
+    with client.session_transaction() as session:
+        admin_id = session["user_id"]
 
     settings = client.get("/settings")
     assert settings.status_code == 200
     assert b"Reset all workspace data" in settings.data
 
-    metadata = Config.DATA_DIR / "workspaces" / "admin-example-com" / "workbook" / "metadata.json"
-    upload = Config.UPLOAD_DIR / "workspaces" / "admin-example-com" / "staging" / "abc" / "file.csv"
-    history = Config.DATA_DIR / "sessions" / "admin-example-com.json"
+    metadata = Config.DATA_DIR / "workspaces" / admin_id / "workbook" / "metadata.json"
+    upload = Config.UPLOAD_DIR / "workspaces" / admin_id / "staging" / "abc" / "file.csv"
+    history = Config.DATA_DIR / "sessions" / f"{admin_id}.json"
     for path in (metadata, upload, history):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("data", encoding="utf-8")
@@ -123,6 +142,8 @@ def test_demo_users_are_isolated(demo_app):
 
 
 def test_expired_demo_session_is_deleted(demo_app):
+    from app.session import payload_path, save_history, save_payload_usage, session_path
+
     client = demo_app.test_client()
     client.post("/demo/start")
     with client.session_transaction() as session:
@@ -130,6 +151,10 @@ def test_expired_demo_session_is_deleted(demo_app):
 
     workspace = workspace_for_user(user_id)
     (workspace.data_dir / "marker.txt").write_text("demo data", encoding="utf-8")
+    save_history(user_id, [], {"role": "user", "content": "private question"}, "private answer")
+    save_payload_usage(user_id, {"chars": 42})
+    assert session_path(user_id).exists()
+    assert payload_path(user_id).exists()
     expire_user(user_id)
 
     response = client.get("/")
@@ -138,10 +163,13 @@ def test_expired_demo_session_is_deleted(demo_app):
     assert UserStore().get(user_id) is None
     assert not workspace.data_dir.exists()
     assert not workspace.upload_dir.exists()
+    assert not session_path(user_id).exists()
+    assert not payload_path(user_id).exists()
 
 
 def test_cleanup_deletes_only_expired_demo_users(demo_app):
     store = UserStore()
+    admin = store.authenticate("admin@example.com", "change-me-now")
     demo = store.create_demo()
     workspace = workspace_for_user(demo["id"])
     active_demo = store.create_demo()
@@ -153,7 +181,47 @@ def test_cleanup_deletes_only_expired_demo_users(demo_app):
     assert store.get(demo["id"]) is None
     assert not workspace.data_dir.exists()
     assert store.get(active_demo["id"]) is not None
-    assert store.get("admin-example-com") is not None
+    assert store.get(admin["id"]) is not None
+
+
+def test_cleanup_does_not_delete_demo_touched_after_expired_snapshot(demo_app, monkeypatch):
+    store = UserStore()
+    demo = store.create_demo()
+    workspace = workspace_for_user(demo["id"])
+    marker = workspace.data_dir / "marker.txt"
+    marker.write_text("keep", encoding="utf-8")
+    expire_user(demo["id"])
+    read_snapshot = store.list
+
+    def expired_snapshot_then_touch():
+        snapshot = read_snapshot()
+        store.touch(demo["id"])
+        return snapshot
+
+    monkeypatch.setattr(store, "list", expired_snapshot_then_touch)
+
+    assert cleanup_expired_demo_users(store) == 0
+    assert UserStore().get(demo["id"]) is not None
+    assert marker.exists()
+
+
+def test_demo_request_stops_if_user_disappears_before_touch(demo_app, monkeypatch):
+    client = demo_app.test_client()
+    client.post("/demo/start")
+    original_touch = UserStore.touch
+
+    def delete_before_touch(store, user_id):
+        store.delete(user_id)
+        return original_touch(store, user_id)
+
+    monkeypatch.setattr(UserStore, "touch", delete_before_touch)
+
+    response = client.get("/")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/login")
+    with client.session_transaction() as session:
+        assert "user_id" not in session
 
 
 def test_cleanup_script_runs(demo_app, capsys):

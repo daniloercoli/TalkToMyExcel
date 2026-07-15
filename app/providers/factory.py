@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from app.config import Config
+from app.json_store import read_or_create_json, write_json
 from app.providers.local_embedding import LocalEmbedding
 from app.providers.openai_compatible import OpenAICompatibleEmbedding, OpenAICompatibleLLM
 
@@ -49,9 +50,12 @@ def default_settings() -> dict:
 
 
 def load_settings() -> dict:
-    if not Config.SETTINGS_FILE.exists():
-        save_settings(default_settings())
-    settings = json.loads(Config.SETTINGS_FILE.read_text(encoding="utf-8"))
+    settings = read_or_create_json(
+        Config.SETTINGS_FILE,
+        default_settings(),
+        indent=2,
+        sort_keys=True,
+    )
     merged = default_settings()
     for key, value in settings.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -62,8 +66,7 @@ def load_settings() -> dict:
 
 
 def save_settings(settings: dict) -> None:
-    Config.SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    Config.SETTINGS_FILE.write_text(json.dumps(settings, indent=2, sort_keys=True), encoding="utf-8")
+    write_json(Config.SETTINGS_FILE, settings, indent=2, sort_keys=True)
 
 
 def get_llm_provider(settings: dict | None = None) -> tuple[OpenAICompatibleLLM, str]:
